@@ -1,13 +1,16 @@
 import { Controller, Get } from '@nestjs/common';
-import { HealthResponse } from '@dealerforge/shared';
+import { Public } from '../../common/decorators/public.decorator';
+import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
 import { HealthService } from './health.service';
 
 @Controller('health')
+@Public()
+@SkipTenant()
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
-  getHealth(): HealthResponse {
+  check() {
     return this.healthService.getHealth();
   }
 }

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/common/prisma/prisma.service';
 
 describe('Health endpoint (e2e)', () => {
   let app: INestApplication;
@@ -9,7 +10,12 @@ describe('Health endpoint (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule]
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue({
+        userDealershipRole: { findFirst: jest.fn() }
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
@@ -26,9 +32,5 @@ describe('Health endpoint (e2e)', () => {
     expect(res.body.status).toBe('ok');
     expect(res.body.service).toBe('api');
     expect(typeof res.body.timestamp).toBe('string');
-  });
-
-  it('requires dealership header on protected routes', async () => {
-    await request(app.getHttpServer()).get('/api/v1/unknown').expect(400);
   });
 });

@@ -1,15 +1,14 @@
-import { BadRequestException, Injectable, NestMiddleware } from '@nestjs/common';
+import { Injectable, NestMiddleware } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 
+/**
+ * Deprecated in Phase 1.
+ * Tenancy is enforced by TenantGuard so auth endpoints can resolve identity
+ * before an active dealership is selected.
+ */
 @Injectable()
 export class TenancyMiddleware implements NestMiddleware {
-  use(req: Request, _res: Response, next: NextFunction): void {
-    const dealershipId = req.header('x-dealership-id');
-
-    if (!dealershipId) {
-      throw new BadRequestException('x-dealership-id header is required');
-    }
-
+  use(_req: Request, _res: Response, next: NextFunction): void {
     next();
   }
 }
