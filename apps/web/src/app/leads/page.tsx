@@ -21,6 +21,9 @@ export default function LeadsPage(): JSX.Element {
   const [source, setSource] = useState('');
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
 
   const [formState, setFormState] = useState<CreateLeadPayload>({
     firstName: '',
@@ -32,6 +35,7 @@ export default function LeadsPage(): JSX.Element {
   });
 
   async function loadLeads(): Promise<void> {
+    setLoading(true);
     const data = await fetchLeads({
       status: status ? (status as LeadStatus) : undefined,
       assignedTo: assignedTo || undefined,
@@ -39,6 +43,8 @@ export default function LeadsPage(): JSX.Element {
       q: q || undefined
     });
     setLeads(data);
+    setError(null);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -66,6 +72,8 @@ export default function LeadsPage(): JSX.Element {
         vehicleInterest: ''
       });
       await loadLeads();
+    } catch {
+      setError('Unable to create lead');
     } finally {
       setCreating(false);
     }
@@ -74,6 +82,7 @@ export default function LeadsPage(): JSX.Element {
   return (
     <main>
       <h1>Leads</h1>
+      {error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
 
       <form onSubmit={onFilterSubmit} style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
         <h2>Filters</h2>
@@ -91,7 +100,9 @@ export default function LeadsPage(): JSX.Element {
         <button type="submit">Apply filters</button>
       </form>
 
-      <form onSubmit={onCreateLead} style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
+      <button type="button" onClick={() => setShowQuickAdd((current) => !current)}>{showQuickAdd ? 'Hide quick add' : 'Quick add lead'}</button>
+
+      {showQuickAdd ? <form onSubmit={onCreateLead} style={{ display: 'grid', gap: 8, marginBottom: 24 }}>
         <h2>Create lead</h2>
         <input
           value={formState.firstName ?? ''}
@@ -126,7 +137,10 @@ export default function LeadsPage(): JSX.Element {
         <button type="submit" disabled={creating}>
           {creating ? 'Creating...' : 'Create lead'}
         </button>
-      </form>
+      </form> : null}
+
+      {loading ? <p>Loading leads...</p> : null}
+      {!loading && leads.length === 0 ? <p>No leads found. Use Quick add lead to create your first record.</p> : null}
 
       <table cellPadding={8} cellSpacing={0} style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>

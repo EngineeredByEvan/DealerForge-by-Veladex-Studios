@@ -20,14 +20,18 @@ export default function TasksPage(): JSX.Element {
   const [description, setDescription] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function load(): Promise<void> {
+    setLoading(true);
     try {
       const result = await fetchTasks(statusFilter === 'ALL' ? undefined : { status: statusFilter });
       setTasks(result);
       setError(null);
     } catch {
       setError('Unable to load tasks');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -127,7 +131,8 @@ export default function TasksPage(): JSX.Element {
           ))}
         </select>
 
-        {tasks.length === 0 ? <p>No tasks found.</p> : null}
+        {loading ? <p>Loading tasks...</p> : null}
+        {!loading && tasks.length === 0 ? <p>No tasks found. Create your first follow-up task above.</p> : null}
         <ul>
           {tasks.map((task) => (
             <li key={task.id}>

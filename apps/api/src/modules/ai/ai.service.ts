@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { redactJson, redactName, redactText } from './ai.safety';
 import { AiChannel, AiFeature, AiLeadContext, AiTone, LeadScoreResult } from './ai.types';
 
@@ -8,7 +9,10 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
   private queue: { add: (name: string, data: Record<string, unknown>) => Promise<unknown> } | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   async leadSummary(dealershipId: string, leadId: string) {
     const context = await this.loadLeadContext(dealershipId, leadId);
@@ -16,6 +20,7 @@ export class AiService {
 
     await this.enqueueAiJob('lead_summary', dealershipId, leadId, { leadId });
     await this.logRedacted('lead_summary', dealershipId, leadId, { leadId }, { summary });
+    await this.auditAiAction(dealershipId, leadId, 'lead_summary');
 
     return { leadId, summary };
   }
@@ -26,6 +31,7 @@ export class AiService {
 
     await this.enqueueAiJob('lead_score', dealershipId, leadId, { leadId });
     await this.logRedacted('lead_score', dealershipId, leadId, { leadId }, result);
+    await this.auditAiAction(dealershipId, leadId, 'lead_score');
 
     return { leadId, ...result };
   }
@@ -47,6 +53,7 @@ export class AiService {
       { leadId, channel, tone, instruction },
       draft
     );
+    await this.auditAiAction(dealershipId, leadId, 'draft_followup');
 
     return { leadId, ...draft };
   }
@@ -57,6 +64,7 @@ export class AiService {
 
     await this.enqueueAiJob('next_best_action', dealershipId, leadId, { leadId });
     await this.logRedacted('next_best_action', dealershipId, leadId, { leadId }, action);
+    await this.auditAiAction(dealershipId, leadId, 'next_best_action');
 
     return { leadId, ...action };
   }
@@ -238,6 +246,16 @@ export class AiService {
         requestPayload: redactJson(requestPayload),
         resultPayload: redactJson(resultPayload)
       }
+    });
+  }
+
+  private async auditAiAction(dealershipId: string, leadId: string, feature: AiFeature): Promise<void> {
+    await this.auditService.logEvent({
+      dealershipId,
+      action: 'ai_action_invoked',
+      entityType: 'Lead',
+      entityId: leadId,
+      metadata: { feature }
     });
   }
 }

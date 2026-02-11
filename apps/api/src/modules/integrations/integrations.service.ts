@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, TooManyRequestsException, UnauthorizedException } from '@nestjs/common';
 import { IntegrationProvider, Prisma } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { LeadsService } from '../leads/leads.service';
 import { GenericAdapter } from './adapters/generic.adapter';
 import { IntegrationAdapter, LeadInboundDto } from './adapters/integration-adapter.interface';
@@ -18,10 +19,14 @@ const INTEGRATION_INCLUDE = {
 @Injectable()
 export class IntegrationsService {
   private readonly genericAdapter = new GenericAdapter();
+  private readonly webhookRateLimitWindowMs = 60_000;
+  private readonly webhookRateLimitMax = 60;
+  private readonly webhookHits = new Map<string, number[]>();
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly leadsService: LeadsService
+    private readonly leadsService: LeadsService,
+    private readonly auditService: AuditService
   ) {}
 
   async createIntegration(dealershipId: string, payload: CreateIntegrationDto) {
@@ -118,19 +123,29 @@ export class IntegrationsService {
     };
   }
 
-  async handleWebhook(providerRaw: string, providedSecret: string | undefined, payload: unknown) {
+  async handleWebhook(
+    providerRaw: string,
+    providedSecret: string | undefined,
+    payload: unknown,
+    requestIdentity: string
+  ) {
     const provider = this.toIntegrationProvider(providerRaw);
+    this.enforceWebhookRateLimit(provider, requestIdentity);
+
     if (!providedSecret) {
       throw new UnauthorizedException('Missing integration webhook secret');
     }
 
-    const integration = await this.prisma.integration.findFirst({
+    const integrations = await this.prisma.integration.findMany({
       where: {
         provider,
-        webhookSecret: providedSecret,
         isActive: true
       }
     });
+
+    const integration = integrations.find((candidate) =>
+      this.constantTimeSecretMatch(candidate.webhookSecret, providedSecret)
+    );
 
     if (!integration) {
       throw new UnauthorizedException('Invalid integration webhook secret');
@@ -165,24 +180,52 @@ export class IntegrationsService {
         }
       });
 
+      await this.auditService.logEvent({
+        dealershipId: integration.dealershipId,
+        action: 'integration_event_ingested',
+        entityType: 'IntegrationEvent',
+        entityId: event.id,
+        metadata: {
+          provider,
+          integrationId: integration.id,
+          parsedOk: true,
+          leadId: lead.id
+        }
+      });
+
       return {
         ok: true,
         integrationEventId: event.id,
         leadId: lead.id
       };
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown parse error';
+
       await this.prisma.integrationEvent.update({
         where: { id: event.id },
         data: {
           parsedOk: false,
-          error: error instanceof Error ? error.message : 'Unknown parse error'
+          error: message
+        }
+      });
+
+      await this.auditService.logEvent({
+        dealershipId: integration.dealershipId,
+        action: 'integration_event_ingested',
+        entityType: 'IntegrationEvent',
+        entityId: event.id,
+        metadata: {
+          provider,
+          integrationId: integration.id,
+          parsedOk: false,
+          error: message
         }
       });
 
       return {
         ok: false,
         integrationEventId: event.id,
-        error: error instanceof Error ? error.message : 'Unknown parse error'
+        error: message
       };
     }
   }
@@ -243,5 +286,32 @@ export class IntegrationsService {
 
       return row;
     });
+  }
+
+  private constantTimeSecretMatch(expected: string, provided: string): boolean {
+    const expectedBuffer = Buffer.from(expected);
+    const providedBuffer = Buffer.from(provided);
+
+    if (expectedBuffer.length !== providedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(expectedBuffer, providedBuffer);
+  }
+
+  private enforceWebhookRateLimit(provider: IntegrationProvider, requestIdentity: string): void {
+    const now = Date.now();
+    const key = `${provider}:${requestIdentity}`;
+    const recentHits = (this.webhookHits.get(key) ?? []).filter(
+      (timestamp) => now - timestamp < this.webhookRateLimitWindowMs
+    );
+
+    if (recentHits.length >= this.webhookRateLimitMax) {
+      this.webhookHits.set(key, recentHits);
+      throw new TooManyRequestsException('Webhook rate limit exceeded');
+    }
+
+    recentHits.push(now);
+    this.webhookHits.set(key, recentHits);
   }
 }

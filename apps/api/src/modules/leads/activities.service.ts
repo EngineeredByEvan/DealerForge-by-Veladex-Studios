@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateActivityDto } from './activities.dto';
 
 @Injectable()
 export class ActivitiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   async listByLead(dealershipId: string, leadId: string) {
     await this.ensureLeadExists(dealershipId, leadId);
@@ -62,6 +66,15 @@ export class ActivitiesService {
         select: { id: true }
       })
     ]);
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: createdByUserId },
+      action: 'activity_logged',
+      entityType: 'Activity',
+      entityId: activity.id,
+      metadata: { leadId, type: activity.type, subject: activity.subject }
+    });
 
     return activity;
   }
