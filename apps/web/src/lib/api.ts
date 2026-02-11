@@ -19,6 +19,52 @@ export type HealthResponse = {
   timestamp: string;
 };
 
+export type LeadStatus =
+  | 'NEW'
+  | 'CONTACTED'
+  | 'QUALIFIED'
+  | 'APPOINTMENT_SET'
+  | 'NEGOTIATING'
+  | 'SOLD'
+  | 'LOST';
+
+export type Lead = {
+  id: string;
+  dealershipId: string;
+  status: LeadStatus;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  vehicleInterest: string | null;
+  lastActivityAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignedToUserId?: string | null;
+  source?: { id: string; name: string } | null;
+};
+
+export type LeadFilters = {
+  status?: LeadStatus;
+  assignedTo?: string;
+  source?: string;
+  q?: string;
+  dateRange?: string;
+};
+
+export type CreateLeadPayload = {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  source?: string;
+  assignedToUserId?: string;
+  vehicleInterest?: string;
+  status?: LeadStatus;
+};
+
+export type UpdateLeadPayload = Partial<CreateLeadPayload> & { lastActivityAt?: string };
+
 export function setTokens(tokens: { accessToken: string; refreshToken: string }): void {
   localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
   localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
@@ -85,11 +131,98 @@ export async function fetchTenantHealth(): Promise<HealthResponse> {
   return (await response.json()) as HealthResponse;
 }
 
-export async function apiWithTenant(path: string): Promise<Response> {
+async function apiRequest(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${API_BASE_URL}/api/v1${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${getAccessToken() ?? ''}`,
-      'X-Dealership-Id': getSelectedDealershipId() ?? ''
+      'X-Dealership-Id': getSelectedDealershipId() ?? '',
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.headers ?? {})
     }
   });
+}
+
+export async function apiWithTenant(path: string): Promise<Response> {
+  return apiRequest(path);
+}
+
+export async function fetchLeads(filters?: LeadFilters): Promise<Lead[]> {
+  const query = new URLSearchParams();
+  if (filters?.status) query.set('status', filters.status);
+  if (filters?.assignedTo) query.set('assignedTo', filters.assignedTo);
+  if (filters?.source) query.set('source', filters.source);
+  if (filters?.q) query.set('q', filters.q);
+  if (filters?.dateRange) query.set('dateRange', filters.dateRange);
+
+  const queryString = query.toString();
+  const response = await apiRequest(`/leads${queryString ? `?${queryString}` : ''}`);
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch leads');
+  }
+
+  return (await response.json()) as Lead[];
+}
+
+export async function createLead(payload: CreateLeadPayload): Promise<Lead> {
+  const response = await apiRequest('/leads', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to create lead');
+  }
+
+  return (await response.json()) as Lead;
+}
+
+export async function fetchLeadById(leadId: string): Promise<Lead> {
+  const response = await apiRequest(`/leads/${leadId}`);
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch lead');
+  }
+
+  return (await response.json()) as Lead;
+}
+
+export async function updateLead(leadId: string, payload: UpdateLeadPayload): Promise<Lead> {
+  const response = await apiRequest(`/leads/${leadId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to update lead');
+  }
+
+  return (await response.json()) as Lead;
+}
+
+export async function assignLead(leadId: string, assignedToUserId: string): Promise<Lead> {
+  const response = await apiRequest(`/leads/${leadId}/assign`, {
+    method: 'POST',
+    body: JSON.stringify({ assignedToUserId })
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to assign lead');
+  }
+
+  return (await response.json()) as Lead;
+}
+
+export async function updateLeadStatus(leadId: string, status: LeadStatus): Promise<Lead> {
+  const response = await apiRequest(`/leads/${leadId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status })
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to update lead status');
+  }
+
+  return (await response.json()) as Lead;
 }
