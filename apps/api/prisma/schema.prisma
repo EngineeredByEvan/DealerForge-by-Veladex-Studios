@@ -13,6 +13,16 @@ enum Role {
   SALES
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  APPOINTMENT_SET
+  NEGOTIATING
+  SOLD
+  LOST
+}
+
 model AutoGroup {
   id          String       @id @default(cuid())
   name        String
@@ -40,6 +50,7 @@ model User {
   firstName        String
   lastName         String
   dealerships      UserDealershipRole[]
+  assignedLeads    Lead[]               @relation("LeadAssignments")
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 }
@@ -58,18 +69,39 @@ model UserDealershipRole {
   @@index([dealershipId])
 }
 
-model Lead {
-  id           String     @id @default(cuid())
+model LeadSource {
+  id          String   @id @default(cuid())
   dealershipId String
-  source       String?
-  status       String     @default("new")
-  firstName    String?
-  lastName     String?
-  email        String?
-  phone        String?
-  dealership   Dealership @relation(fields: [dealershipId], references: [id])
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  name        String
+  leads       Lead[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([dealershipId])
+  @@unique([dealershipId, name])
+}
+
+model Lead {
+  id                String     @id @default(cuid())
+  dealershipId      String
+  sourceId          String?
+  source            LeadSource? @relation(fields: [sourceId], references: [id])
+  status            LeadStatus @default(NEW)
+  assignedToUserId  String?
+  assignedToUser    User?      @relation("LeadAssignments", fields: [assignedToUserId], references: [id])
+  firstName         String?
+  lastName          String?
+  email             String?
+  phone             String?
+  vehicleInterest   String?
+  lastActivityAt    DateTime?
+  dealership        Dealership @relation(fields: [dealershipId], references: [id])
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([dealershipId])
+  @@index([dealershipId, status])
+  @@index([dealershipId, assignedToUserId])
+  @@index([dealershipId, sourceId])
+  @@index([dealershipId, lastActivityAt])
 }
