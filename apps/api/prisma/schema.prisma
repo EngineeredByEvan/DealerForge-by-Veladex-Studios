@@ -23,6 +23,16 @@ enum LeadStatus {
   LOST
 }
 
+enum ActivityType {
+  CALL
+  EMAIL
+  SMS
+  NOTE
+  VISIT
+  TEST_DRIVE
+  OTHER
+}
+
 model AutoGroup {
   id          String       @id @default(cuid())
   name        String
@@ -51,6 +61,7 @@ model User {
   lastName         String
   dealerships      UserDealershipRole[]
   assignedLeads    Lead[]               @relation("LeadAssignments")
+  activities       Activity[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 }
@@ -96,6 +107,7 @@ model Lead {
   vehicleInterest   String?
   lastActivityAt    DateTime?
   dealership        Dealership @relation(fields: [dealershipId], references: [id])
+  activities        Activity[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -104,4 +116,21 @@ model Lead {
   @@index([dealershipId, assignedToUserId])
   @@index([dealershipId, sourceId])
   @@index([dealershipId, lastActivityAt])
+}
+
+model Activity {
+  id              String       @id @default(cuid())
+  type            ActivityType
+  subject         String
+  body            String?
+  outcome         String?
+  createdByUserId String
+  leadId          String
+  createdByUser   User         @relation(fields: [createdByUserId], references: [id])
+  lead            Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([createdByUserId])
 }
