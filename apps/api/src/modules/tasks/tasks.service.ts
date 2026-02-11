@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, TaskStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateTaskDto, ListTasksQueryDto, SnoozeTaskDto, UpdateTaskDto } from './tasks.dto';
 
 const TASK_INCLUDE = {
@@ -24,7 +25,10 @@ const TASK_INCLUDE = {
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   async listByDealership(dealershipId: string, query: ListTasksQueryDto) {
     const where: Prisma.TaskWhereInput = { dealershipId };
@@ -48,11 +52,11 @@ export class TasksService {
     });
   }
 
-  async createTask(dealershipId: string, payload: CreateTaskDto) {
+  async createTask(dealershipId: string, payload: CreateTaskDto, actorUserId?: string) {
     await this.validateAssignee(dealershipId, payload.assignedToUserId);
     await this.validateLead(dealershipId, payload.leadId);
 
-    return this.prisma.task.create({
+    const task = await this.prisma.task.create({
       data: {
         dealershipId,
         title: payload.title.trim(),
@@ -63,9 +67,13 @@ export class TasksService {
       },
       include: TASK_INCLUDE
     });
+
+    await this.auditService.logEvent({ dealershipId, actor: { userId: actorUserId }, action: 'task_created', entityType: 'Task', entityId: task.id, metadata: { status: task.status, leadId: task.leadId } });
+
+    return task;
   }
 
-  async updateTask(dealershipId: string, taskId: string, payload: UpdateTaskDto) {
+  async updateTask(dealershipId: string, taskId: string, payload: UpdateTaskDto, actorUserId?: string) {
     await this.ensureTaskExists(dealershipId, taskId);
 
     if (payload.assignedToUserId !== undefined) {
@@ -76,7 +84,7 @@ export class TasksService {
       await this.validateLead(dealershipId, payload.leadId);
     }
 
-    return this.prisma.task.update({
+    const task = await this.prisma.task.update({
       where: { id: taskId },
       data: {
         title: payload.title?.trim(),
@@ -88,9 +96,13 @@ export class TasksService {
       },
       include: TASK_INCLUDE
     });
+
+    await this.auditService.logEvent({ dealershipId, actor: { userId: actorUserId }, action: 'task_updated', entityType: 'Task', entityId: task.id, metadata: payload as Prisma.InputJsonValue });
+
+    return task;
   }
 
-  async completeTask(dealershipId: string, taskId: string) {
+  async completeTask(dealershipId: string, taskId: string, actorUserId?: string) {
     const task = await this.findTaskById(dealershipId, taskId);
 
     if (task.status === TaskStatus.CANCELED) {
@@ -101,23 +113,27 @@ export class TasksService {
       return task;
     }
 
-    return this.prisma.task.update({
+    const updated = await this.prisma.task.update({
       where: { id: taskId },
       data: {
         status: TaskStatus.DONE
       },
       include: TASK_INCLUDE
     });
+
+    await this.auditService.logEvent({ dealershipId, actor: { userId: actorUserId }, action: 'task_completed', entityType: 'Task', entityId: updated.id });
+
+    return updated;
   }
 
-  async snoozeTask(dealershipId: string, taskId: string, payload: SnoozeTaskDto) {
+  async snoozeTask(dealershipId: string, taskId: string, payload: SnoozeTaskDto, actorUserId?: string) {
     const task = await this.findTaskById(dealershipId, taskId);
 
     if (task.status === TaskStatus.DONE || task.status === TaskStatus.CANCELED) {
       throw new BadRequestException('Only active tasks can be snoozed');
     }
 
-    return this.prisma.task.update({
+    const updated = await this.prisma.task.update({
       where: { id: taskId },
       data: {
         status: TaskStatus.SNOOZED,
@@ -125,6 +141,10 @@ export class TasksService {
       },
       include: TASK_INCLUDE
     });
+
+    await this.auditService.logEvent({ dealershipId, actor: { userId: actorUserId }, action: 'task_snoozed', entityType: 'Task', entityId: updated.id, metadata: { dueAt: updated.dueAt?.toISOString() ?? null } });
+
+    return updated;
   }
 
   private async findTaskById(dealershipId: string, taskId: string) {

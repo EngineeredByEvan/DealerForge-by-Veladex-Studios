@@ -182,6 +182,12 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
 
       <AiPanel leadId={lead.id} />
 
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <a href="#quick-activity">Quick add activity</a>
+        <a href="#quick-task">Quick add task</a>
+        <a href="#quick-appointment">Quick add appointment</a>
+      </div>
+
       <section>
         <h2>Timeline</h2>
         {activities.length === 0 ? <p>No activities logged yet.</p> : null}
@@ -203,7 +209,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         </ul>
       </section>
 
-      <section>
+      <section id="quick-activity">
         <h2>Log Activity</h2>
         <form onSubmit={(event) => void handleSubmit(event)}>
           <label htmlFor="activityType">Type</label>
@@ -245,7 +251,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         </form>
       </section>
 
-      <section>
+      <section id="quick-task">
         <h2>Tasks</h2>
         <form onSubmit={(event) => void handleTaskCreate(event)}>
           <label htmlFor="taskTitle">Task title</label>
@@ -285,7 +291,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       </section>
 
 
-      <section>
+      <section id="quick-appointment">
         <h2>Appointments</h2>
         <form onSubmit={(event) => void handleAppointmentCreate(event)}>
           <label htmlFor="appointmentStartAt">Start (ISO)</label>

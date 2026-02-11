@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
-import { TenantContext } from '../../common/types/request-context';
+import { AuthUser, TenantContext } from '../../common/types/request-context';
 import { CreateTaskDto, ListTasksQueryDto, SnoozeTaskDto, UpdateTaskDto } from './tasks.dto';
 import { TasksService } from './tasks.service';
 
-type TenantRequest = Request & { tenant?: TenantContext };
+type TenantRequest = Request & { tenant?: TenantContext; user?: AuthUser };
 
 @Controller('tasks')
 export class TasksController {
@@ -17,17 +17,17 @@ export class TasksController {
 
   @Post()
   create(@Req() req: TenantRequest, @Body() payload: CreateTaskDto) {
-    return this.tasksService.createTask(req.tenant!.dealershipId, payload);
+    return this.tasksService.createTask(req.tenant!.dealershipId, payload, req.user?.userId);
   }
 
   @Patch(':id')
   update(@Req() req: TenantRequest, @Param('id') taskId: string, @Body() payload: UpdateTaskDto) {
-    return this.tasksService.updateTask(req.tenant!.dealershipId, taskId, payload);
+    return this.tasksService.updateTask(req.tenant!.dealershipId, taskId, payload, req.user?.userId);
   }
 
   @Post(':id/complete')
   complete(@Req() req: TenantRequest, @Param('id') taskId: string) {
-    return this.tasksService.completeTask(req.tenant!.dealershipId, taskId);
+    return this.tasksService.completeTask(req.tenant!.dealershipId, taskId, req.user?.userId);
   }
 
   @Post(':id/snooze')
@@ -36,6 +36,6 @@ export class TasksController {
     @Param('id') taskId: string,
     @Body() payload: SnoozeTaskDto
   ) {
-    return this.tasksService.snoozeTask(req.tenant!.dealershipId, taskId, payload);
+    return this.tasksService.snoozeTask(req.tenant!.dealershipId, taskId, payload, req.user?.userId);
   }
 }

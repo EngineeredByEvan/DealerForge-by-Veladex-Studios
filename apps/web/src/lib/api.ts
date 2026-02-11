@@ -155,11 +155,16 @@ export async function fetchTenantHealth(): Promise<HealthResponse> {
 }
 
 async function apiRequest(path: string, init?: RequestInit): Promise<Response> {
+  const dealershipId = getSelectedDealershipId();
+  if (!dealershipId) {
+    throw new Error('Please select a dealership to continue');
+  }
+
   return fetch(`${API_BASE_URL}/api/v1${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${getAccessToken() ?? ''}`,
-      'X-Dealership-Id': getSelectedDealershipId() ?? '',
+      'X-Dealership-Id': dealershipId,
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers ?? {})
     }

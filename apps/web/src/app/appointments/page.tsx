@@ -18,14 +18,18 @@ export default function AppointmentsPage(): JSX.Element {
   const [endAt, setEndAt] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   async function load(): Promise<void> {
+    setLoading(true);
     try {
       const result = await fetchAppointments();
       setAppointments(result);
       setError(null);
     } catch {
       setError('Unable to load appointments');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -114,7 +118,8 @@ export default function AppointmentsPage(): JSX.Element {
 
       <section>
         <h2>Appointment list</h2>
-        {appointments.length === 0 ? <p>No appointments found.</p> : null}
+        {loading ? <p>Loading appointments...</p> : null}
+        {!loading && appointments.length === 0 ? <p>No appointments found. Book one above to get started.</p> : null}
         <ul>
           {appointments.map((appointment) => (
             <li key={appointment.id}>

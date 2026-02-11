@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import {
   CreateAppointmentDto,
   ListAppointmentsQueryDto,
@@ -20,7 +21,10 @@ const APPOINTMENT_INCLUDE = {
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   async listByDealership(dealershipId: string, query: ListAppointmentsQueryDto) {
     const where: Prisma.AppointmentWhereInput = { dealershipId };
@@ -42,11 +46,11 @@ export class AppointmentsService {
     });
   }
 
-  async createAppointment(dealershipId: string, payload: CreateAppointmentDto) {
+  async createAppointment(dealershipId: string, payload: CreateAppointmentDto, actorUserId?: string) {
     await this.validateLead(dealershipId, payload.lead_id);
     this.validateTimeWindow(payload.start_at, payload.end_at);
 
-    return this.prisma.appointment.create({
+    const appointment = await this.prisma.appointment.create({
       data: {
         dealershipId,
         status: payload.status ?? AppointmentStatus.SET,
@@ -57,20 +61,36 @@ export class AppointmentsService {
       },
       include: APPOINTMENT_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'appointment_created',
+      entityType: 'Appointment',
+      entityId: appointment.id,
+      metadata: { status: appointment.status, leadId: appointment.lead_id }
+    });
+
+    return appointment;
   }
 
-  async updateAppointment(dealershipId: string, appointmentId: string, payload: UpdateAppointmentDto) {
-    const appointment = await this.findAppointmentById(dealershipId, appointmentId);
+  async updateAppointment(
+    dealershipId: string,
+    appointmentId: string,
+    payload: UpdateAppointmentDto,
+    actorUserId?: string
+  ) {
+    const existingAppointment = await this.findAppointmentById(dealershipId, appointmentId);
 
     if (payload.lead_id !== undefined) {
       await this.validateLead(dealershipId, payload.lead_id);
     }
 
-    const startAt = payload.start_at ?? appointment.start_at.toISOString();
-    const endAt = payload.end_at ?? appointment.end_at.toISOString();
+    const startAt = payload.start_at ?? existingAppointment.start_at.toISOString();
+    const endAt = payload.end_at ?? existingAppointment.end_at.toISOString();
     this.validateTimeWindow(startAt, endAt);
 
-    return this.prisma.appointment.update({
+    const appointment = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: {
         status: payload.status,
@@ -81,46 +101,80 @@ export class AppointmentsService {
       },
       include: APPOINTMENT_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'appointment_updated',
+      entityType: 'Appointment',
+      entityId: appointment.id,
+      metadata: payload as Prisma.InputJsonValue
+    });
+
+    return appointment;
   }
 
-  async confirmAppointment(dealershipId: string, appointmentId: string) {
-    const appointment = await this.findAppointmentById(dealershipId, appointmentId);
+  async confirmAppointment(dealershipId: string, appointmentId: string, actorUserId?: string) {
+    const existingAppointment = await this.findAppointmentById(dealershipId, appointmentId);
 
-    if (appointment.status === AppointmentStatus.CANCELED) {
+    if (existingAppointment.status === AppointmentStatus.CANCELED) {
       throw new BadRequestException('Canceled appointments cannot be confirmed');
     }
 
-    if (appointment.status === AppointmentStatus.CONFIRMED) {
-      return appointment;
+    if (existingAppointment.status === AppointmentStatus.CONFIRMED) {
+      return existingAppointment;
     }
 
-    return this.prisma.appointment.update({
+    const appointment = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: {
         status: AppointmentStatus.CONFIRMED
       },
       include: APPOINTMENT_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'appointment_confirmed',
+      entityType: 'Appointment',
+      entityId: appointment.id
+    });
+
+    return appointment;
   }
 
-  async cancelAppointment(dealershipId: string, appointmentId: string) {
-    const appointment = await this.findAppointmentById(dealershipId, appointmentId);
+  async cancelAppointment(dealershipId: string, appointmentId: string, actorUserId?: string) {
+    const existingAppointment = await this.findAppointmentById(dealershipId, appointmentId);
 
-    if (appointment.status === AppointmentStatus.SHOWED || appointment.status === AppointmentStatus.NO_SHOW) {
+    if (
+      existingAppointment.status === AppointmentStatus.SHOWED ||
+      existingAppointment.status === AppointmentStatus.NO_SHOW
+    ) {
       throw new BadRequestException('Completed appointments cannot be canceled');
     }
 
-    if (appointment.status === AppointmentStatus.CANCELED) {
-      return appointment;
+    if (existingAppointment.status === AppointmentStatus.CANCELED) {
+      return existingAppointment;
     }
 
-    return this.prisma.appointment.update({
+    const appointment = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: {
         status: AppointmentStatus.CANCELED
       },
       include: APPOINTMENT_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'appointment_canceled',
+      entityType: 'Appointment',
+      entityId: appointment.id
+    });
+
+    return appointment;
   }
 
   private parseRange(range: string): { start: Date; end: Date } | null {

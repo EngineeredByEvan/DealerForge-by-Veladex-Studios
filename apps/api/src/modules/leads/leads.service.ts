@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { AssignLeadDto, CreateLeadDto, ListLeadsQueryDto, UpdateLeadDto } from './leads.dto';
 
 const LEAD_INCLUDE = {
@@ -22,28 +23,19 @@ const LEAD_INCLUDE = {
 
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService
+  ) {}
 
   async listByDealership(dealershipId: string, query: ListLeadsQueryDto) {
-    const where: Prisma.LeadWhereInput = {
-      dealershipId
-    };
+    const where: Prisma.LeadWhereInput = { dealershipId };
 
-    if (query.status) {
-      where.status = query.status;
-    }
-
-    if (query.assignedTo) {
-      where.assignedToUserId = query.assignedTo;
-    }
+    if (query.status) where.status = query.status;
+    if (query.assignedTo) where.assignedToUserId = query.assignedTo;
 
     if (query.source) {
-      where.source = {
-        name: {
-          equals: query.source,
-          mode: 'insensitive'
-        }
-      };
+      where.source = { name: { equals: query.source, mode: 'insensitive' } };
     }
 
     if (query.q) {
@@ -58,10 +50,7 @@ export class LeadsService {
 
     const dateRange = this.parseDateRange(query.dateRange);
     if (dateRange) {
-      where.createdAt = {
-        gte: dateRange.start,
-        lte: dateRange.end
-      };
+      where.createdAt = { gte: dateRange.start, lte: dateRange.end };
     }
 
     return this.prisma.lead.findMany({
@@ -71,11 +60,11 @@ export class LeadsService {
     });
   }
 
-  async createLead(dealershipId: string, payload: CreateLeadDto) {
+  async createLead(dealershipId: string, payload: CreateLeadDto, actorUserId?: string) {
     const source = await this.resolveSource(dealershipId, payload.source);
     await this.validateAssignee(dealershipId, payload.assignedToUserId);
 
-    return this.prisma.lead.create({
+    const lead = await this.prisma.lead.create({
       data: {
         dealershipId,
         sourceId: source?.id,
@@ -90,14 +79,22 @@ export class LeadsService {
       },
       include: LEAD_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'lead_created',
+      entityType: 'Lead',
+      entityId: lead.id,
+      metadata: { status: lead.status, source: payload.source ?? null }
+    });
+
+    return lead;
   }
 
   async findById(dealershipId: string, leadId: string) {
     const lead = await this.prisma.lead.findFirst({
-      where: {
-        id: leadId,
-        dealershipId
-      },
+      where: { id: leadId, dealershipId },
       include: LEAD_INCLUDE
     });
 
@@ -108,7 +105,7 @@ export class LeadsService {
     return lead;
   }
 
-  async updateLead(dealershipId: string, leadId: string, payload: UpdateLeadDto) {
+  async updateLead(dealershipId: string, leadId: string, payload: UpdateLeadDto, actorUserId?: string) {
     await this.ensureLeadExists(dealershipId, leadId);
     const source = await this.resolveSource(dealershipId, payload.source);
 
@@ -116,7 +113,7 @@ export class LeadsService {
       await this.validateAssignee(dealershipId, payload.assignedToUserId);
     }
 
-    return this.prisma.lead.update({
+    const lead = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         status: payload.status,
@@ -131,13 +128,24 @@ export class LeadsService {
       },
       include: LEAD_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'lead_updated',
+      entityType: 'Lead',
+      entityId: lead.id,
+      metadata: payload as Prisma.InputJsonValue
+    });
+
+    return lead;
   }
 
-  async assignLead(dealershipId: string, leadId: string, payload: AssignLeadDto) {
+  async assignLead(dealershipId: string, leadId: string, payload: AssignLeadDto, actorUserId?: string) {
     await this.ensureLeadExists(dealershipId, leadId);
     await this.validateAssignee(dealershipId, payload.assignedToUserId);
 
-    return this.prisma.lead.update({
+    const lead = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         assignedToUserId: payload.assignedToUserId,
@@ -145,12 +153,23 @@ export class LeadsService {
       },
       include: LEAD_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'lead_assigned',
+      entityType: 'Lead',
+      entityId: lead.id,
+      metadata: { assignedToUserId: payload.assignedToUserId }
+    });
+
+    return lead;
   }
 
-  async updateStatus(dealershipId: string, leadId: string, status: LeadStatus) {
+  async updateStatus(dealershipId: string, leadId: string, status: LeadStatus, actorUserId?: string) {
     await this.ensureLeadExists(dealershipId, leadId);
 
-    return this.prisma.lead.update({
+    const lead = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         status,
@@ -158,23 +177,26 @@ export class LeadsService {
       },
       include: LEAD_INCLUDE
     });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'lead_status_changed',
+      entityType: 'Lead',
+      entityId: lead.id,
+      metadata: { status }
+    });
+
+    return lead;
   }
 
   private async ensureLeadExists(dealershipId: string, leadId: string): Promise<void> {
-    const lead = await this.prisma.lead.findFirst({
-      where: { id: leadId, dealershipId },
-      select: { id: true }
-    });
-
-    if (!lead) {
-      throw new NotFoundException('Lead not found');
-    }
+    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, dealershipId }, select: { id: true } });
+    if (!lead) throw new NotFoundException('Lead not found');
   }
 
   private parseDateRange(dateRange?: string): { start: Date; end: Date } | null {
-    if (!dateRange) {
-      return null;
-    }
+    if (!dateRange) return null;
 
     const parts = dateRange.split(',').map((part) => part.trim());
     if (parts.length !== 2) {
@@ -193,35 +215,20 @@ export class LeadsService {
   }
 
   private async resolveSource(dealershipId: string, sourceName?: string) {
-    if (!sourceName) {
-      return null;
-    }
+    if (!sourceName) return null;
 
     return this.prisma.leadSource.upsert({
-      where: {
-        dealershipId_name: {
-          dealershipId,
-          name: sourceName
-        }
-      },
+      where: { dealershipId_name: { dealershipId, name: sourceName } },
       update: {},
-      create: {
-        dealershipId,
-        name: sourceName
-      }
+      create: { dealershipId, name: sourceName }
     });
   }
 
   private async validateAssignee(dealershipId: string, assignedToUserId?: string): Promise<void> {
-    if (!assignedToUserId) {
-      return;
-    }
+    if (!assignedToUserId) return;
 
     const membership = await this.prisma.userDealershipRole.findFirst({
-      where: {
-        dealershipId,
-        userId: assignedToUserId
-      },
+      where: { dealershipId, userId: assignedToUserId },
       select: { id: true }
     });
 

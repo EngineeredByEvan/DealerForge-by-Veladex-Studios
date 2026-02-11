@@ -97,7 +97,8 @@ Required variables are documented in `.env.example`:
 Primary strategy: `X-Dealership-Id` request header.
 
 - All non-public endpoints require a valid JWT access token.
-- All endpoints except `/health` and `/auth/*` also require `X-Dealership-Id`.
+- All endpoints except `/health` and public integration webhooks require `X-Dealership-Id`.
+- `POST /auth/login` and `POST /auth/refresh` are public and skip tenant resolution by design.
 - The `TenantGuard` validates the authenticated user has membership in that dealership (`UserDealershipRole`).
 - On success, guard attaches `tenant` context to request: `{ dealershipId, role }`.
 - Service layer methods must explicitly accept `dealershipId` and include it in all Prisma `where`/`data` clauses.
@@ -137,3 +138,22 @@ For API test infrastructure, the workflow starts PostgreSQL and Redis service co
 
 - `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dealerforge_ci?schema=public`
 - `REDIS_URL=redis://localhost:6379`
+
+
+## v1 usage flow
+
+1. Sign in at `http://localhost:3000/login` with a seeded user.
+2. Pick a dealership from the global selector in the top navigation.
+3. Use **Dashboard** for tenant health and KPI snapshots.
+4. Use **Leads** to quick-add a lead, then open the lead detail and quick-add activity/task/appointment.
+5. Use **Tasks** and **Appointments** to execute follow-up workflows.
+6. Use **Integrations** to configure webhook providers or import CSV leads.
+7. Managers/Admins can review recent user/system actions at `GET /api/v1/audit`.
+
+### Screenshot placeholders
+
+- `[placeholder] Dashboard with top nav and dealership selector`
+- `[placeholder] Leads list with quick add`
+- `[placeholder] Lead detail quick add actions`
+- `[placeholder] Integrations settings and webhook secret`
+- `[placeholder] Audit log endpoint response`

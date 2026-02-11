@@ -9,7 +9,7 @@ import {
   Req
 } from '@nestjs/common';
 import { Request } from 'express';
-import { TenantContext } from '../../common/types/request-context';
+import { AuthUser, TenantContext } from '../../common/types/request-context';
 import {
   AssignLeadDto,
   CreateLeadDto,
@@ -19,7 +19,7 @@ import {
 } from './leads.dto';
 import { LeadsService } from './leads.service';
 
-type TenantRequest = Request & { tenant?: TenantContext };
+type TenantRequest = Request & { tenant?: TenantContext; user?: AuthUser };
 
 @Controller('leads')
 export class LeadsController {
@@ -32,7 +32,7 @@ export class LeadsController {
 
   @Post()
   create(@Req() req: TenantRequest, @Body() payload: CreateLeadDto) {
-    return this.leadsService.createLead(req.tenant!.dealershipId, payload);
+    return this.leadsService.createLead(req.tenant!.dealershipId, payload, req.user?.userId);
   }
 
   @Get(':id')
@@ -42,16 +42,16 @@ export class LeadsController {
 
   @Patch(':id')
   update(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: UpdateLeadDto) {
-    return this.leadsService.updateLead(req.tenant!.dealershipId, leadId, payload);
+    return this.leadsService.updateLead(req.tenant!.dealershipId, leadId, payload, req.user?.userId);
   }
 
   @Post(':id/assign')
   assign(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: AssignLeadDto) {
-    return this.leadsService.assignLead(req.tenant!.dealershipId, leadId, payload);
+    return this.leadsService.assignLead(req.tenant!.dealershipId, leadId, payload, req.user?.userId);
   }
 
   @Post(':id/status')
   status(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: UpdateLeadStatusDto) {
-    return this.leadsService.updateStatus(req.tenant!.dealershipId, leadId, payload.status);
+    return this.leadsService.updateStatus(req.tenant!.dealershipId, leadId, payload.status, req.user?.userId);
   }
 }

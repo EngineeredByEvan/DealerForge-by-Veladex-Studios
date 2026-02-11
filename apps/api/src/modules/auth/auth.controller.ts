@@ -9,17 +9,18 @@ import { LoginDto, RefreshDto } from './auth.dto';
 type RequestWithUser = Request & { user?: AuthUser };
 
 @Controller('auth')
-@SkipTenant()
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @SkipTenant()
   @Post('login')
   login(@Body() dto: LoginDto): Promise<{ accessToken: string; refreshToken: string }> {
     return this.authService.login(dto.email, dto.password);
   }
 
   @Public()
+  @SkipTenant()
   @Post('refresh')
   refresh(@Body() dto: RefreshDto): Promise<{ accessToken: string; refreshToken: string }> {
     return this.authService.refresh(dto.refreshToken);

@@ -47,10 +47,12 @@ export class IntegrationsController {
   @Public()
   @SkipTenant()
   webhook(
+    @Req() req: Request,
     @Param() params: WebhookParamsDto,
     @Headers('x-integration-secret') integrationSecret: string | undefined,
     @Body() payload: unknown
   ) {
-    return this.integrationsService.handleWebhook(params.provider, integrationSecret, payload);
+    const requestIdentity = req.ip ?? req.header('x-forwarded-for') ?? 'unknown';
+    return this.integrationsService.handleWebhook(params.provider, integrationSecret, payload, requestIdentity);
   }
 }
