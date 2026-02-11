@@ -10,10 +10,20 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
-  imports: [JwtModule.register({}), HealthModule, AuthModule, LeadsModule, TasksModule, AppointmentsModule, AdminModule],
+  imports: [
+    JwtModule.register({}),
+    HealthModule,
+    AuthModule,
+    LeadsModule,
+    TasksModule,
+    AppointmentsModule,
+    ReportsModule,
+    AdminModule
+  ],
   providers: [
     PrismaService,
     {
