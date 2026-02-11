@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AutoGroup {
+  id          String       @id @default(cuid())
+  name        String
+  dealerships Dealership[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Dealership {
+  id          String   @id @default(cuid())
+  autoGroupId String
+  name        String
+  autoGroup   AutoGroup @relation(fields: [autoGroupId], references: [id])
+  leads       Lead[]
+  users       UserDealershipRole[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id          String               @id @default(cuid())
+  email       String               @unique
+  firstName   String
+  lastName    String
+  dealerships UserDealershipRole[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model UserDealershipRole {
+  id           String     @id @default(cuid())
+  userId       String
+  dealershipId String
+  role         String
+  user         User       @relation(fields: [userId], references: [id])
+  dealership   Dealership @relation(fields: [dealershipId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([userId, dealershipId, role])
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  dealershipId  String
+  source        String?
+  status        String     @default("new")
+  firstName     String?
+  lastName      String?
+  email         String?
+  phone         String?
+  dealership    Dealership @relation(fields: [dealershipId], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
