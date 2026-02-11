@@ -9,9 +9,10 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
-  imports: [JwtModule.register({}), HealthModule, AuthModule, LeadsModule, AdminModule],
+  imports: [JwtModule.register({}), HealthModule, AuthModule, LeadsModule, TasksModule, AdminModule],
   providers: [
     PrismaService,
     {

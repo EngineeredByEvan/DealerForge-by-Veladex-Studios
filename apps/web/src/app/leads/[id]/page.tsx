@@ -5,9 +5,12 @@ import {
   Activity,
   ActivityType,
   Lead,
+  Task,
   createLeadActivity,
+  createTask,
   fetchLeadActivities,
-  fetchLeadById
+  fetchLeadById,
+  fetchTasks
 } from '@/lib/api';
 
 type LeadDetailPageProps = {
@@ -35,16 +38,22 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [body, setBody] = useState('');
   const [outcome, setOutcome] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDueAt, setTaskDueAt] = useState('');
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
 
   useEffect(() => {
     async function load(): Promise<void> {
       try {
-        const [leadResult, activityResult] = await Promise.all([
+        const [leadResult, activityResult, taskResult] = await Promise.all([
           fetchLeadById(params.id),
-          fetchLeadActivities(params.id)
+          fetchLeadActivities(params.id),
+          fetchTasks({ leadId: params.id })
         ]);
         setLead(leadResult);
         setActivities(activityResult);
+        setTasks(taskResult);
       } catch {
         setError('Unable to load lead details');
       }
@@ -86,6 +95,32 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       setError('Unable to save activity');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+
+  async function handleTaskCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!taskTitle.trim()) {
+      setError('Task title is required');
+      return;
+    }
+
+    try {
+      setTaskSubmitting(true);
+      setError(null);
+      const created = await createTask({
+        title: taskTitle,
+        dueAt: taskDueAt || undefined,
+        leadId: params.id
+      });
+      setTasks((previous) => [created, ...previous]);
+      setTaskTitle('');
+      setTaskDueAt('');
+    } catch {
+      setError('Unable to create lead task');
+    } finally {
+      setTaskSubmitting(false);
     }
   }
 
@@ -176,7 +211,41 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
 
       <section>
         <h2>Tasks</h2>
-        <p>Placeholder: upcoming and completed tasks for this lead.</p>
+        <form onSubmit={(event) => void handleTaskCreate(event)}>
+          <label htmlFor="taskTitle">Task title</label>
+          <input
+            id="taskTitle"
+            type="text"
+            value={taskTitle}
+            onChange={(event) => setTaskTitle(event.target.value)}
+            required
+          />
+
+          <label htmlFor="taskDueAt">Due date/time (ISO)</label>
+          <input
+            id="taskDueAt"
+            type="text"
+            placeholder="2026-02-01T15:00:00.000Z"
+            value={taskDueAt}
+            onChange={(event) => setTaskDueAt(event.target.value)}
+          />
+
+          <button type="submit" disabled={taskSubmitting}>
+            {taskSubmitting ? 'Saving task...' : 'Create Task'}
+          </button>
+        </form>
+
+        {tasks.length === 0 ? <p>No tasks for this lead yet.</p> : null}
+        <ul>
+          {tasks.map((task) => (
+            <li key={task.id}>
+              <strong>{task.title}</strong> — {task.status}
+              <br />
+              <small>Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : '—'}</small>
+              {task.description ? <p>{task.description}</p> : null}
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section>

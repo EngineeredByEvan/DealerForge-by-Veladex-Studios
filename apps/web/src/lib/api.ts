@@ -276,3 +276,102 @@ export async function createLeadActivity(
 
   return (await response.json()) as Activity;
 }
+
+export type TaskStatus = 'OPEN' | 'DONE' | 'SNOOZED' | 'CANCELED';
+
+export type Task = {
+  id: string;
+  dealershipId: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  dueAt: string | null;
+  assignedToUserId: string | null;
+  leadId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignedToUser: { id: string; firstName: string; lastName: string; email: string } | null;
+  lead: { id: string; firstName: string | null; lastName: string | null; status: LeadStatus } | null;
+};
+
+export type TaskFilters = {
+  status?: TaskStatus;
+  assignedTo?: string;
+  leadId?: string;
+};
+
+export type CreateTaskPayload = {
+  title: string;
+  description?: string;
+  dueAt?: string;
+  assignedToUserId?: string;
+  leadId?: string;
+};
+
+export type UpdateTaskPayload = Partial<CreateTaskPayload> & { status?: TaskStatus };
+
+export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
+  const query = new URLSearchParams();
+  if (filters?.status) query.set('status', filters.status);
+  if (filters?.assignedTo) query.set('assignedTo', filters.assignedTo);
+  if (filters?.leadId) query.set('leadId', filters.leadId);
+
+  const response = await apiRequest(`/tasks${query.toString() ? `?${query.toString()}` : ''}`);
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch tasks');
+  }
+
+  return (await response.json()) as Task[];
+}
+
+export async function createTask(payload: CreateTaskPayload): Promise<Task> {
+  const response = await apiRequest('/tasks', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to create task');
+  }
+
+  return (await response.json()) as Task;
+}
+
+export async function updateTask(taskId: string, payload: UpdateTaskPayload): Promise<Task> {
+  const response = await apiRequest(`/tasks/${taskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to update task');
+  }
+
+  return (await response.json()) as Task;
+}
+
+export async function completeTask(taskId: string): Promise<Task> {
+  const response = await apiRequest(`/tasks/${taskId}/complete`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to complete task');
+  }
+
+  return (await response.json()) as Task;
+}
+
+export async function snoozeTask(taskId: string, dueAt: string): Promise<Task> {
+  const response = await apiRequest(`/tasks/${taskId}/snooze`, {
+    method: 'POST',
+    body: JSON.stringify({ dueAt })
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to snooze task');
+  }
+
+  return (await response.json()) as Task;
+}
