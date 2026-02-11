@@ -1,5 +1,7 @@
 # DealerForge Monorepo Scaffold
 
+[![CI](https://github.com/Veladex-Studios/DealerForge-by-Veladex-Studios/actions/workflows/ci.yml/badge.svg)](https://github.com/Veladex-Studios/DealerForge-by-Veladex-Studios/actions/workflows/ci.yml)
+
 This repository is scaffolded for the DealerForge CRM + AI Automation platform with:
 
 - `apps/web`: Next.js dashboard frontend
@@ -115,3 +117,23 @@ pnpm lint
 pnpm build
 pnpm test
 ```
+
+
+## CI workflow
+
+GitHub Actions runs `.github/workflows/ci.yml` on every pull request and on pushes to `main`.
+
+CI executes the monorepo checks in this order:
+
+1. `pnpm install`
+2. `pnpm -r lint`
+3. `pnpm -r typecheck`
+4. `pnpm -r build`
+5. `pnpm --filter @dealerforge/api prisma:generate`
+6. `pnpm --filter @dealerforge/api exec prisma migrate dev --name ci --skip-seed`
+7. `pnpm --filter @dealerforge/api test:e2e`
+
+For API test infrastructure, the workflow starts PostgreSQL and Redis service containers and injects:
+
+- `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/dealerforge_ci?schema=public`
+- `REDIS_URL=redis://localhost:6379`

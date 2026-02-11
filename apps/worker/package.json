@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "echo 'No tests for worker yet'"
+    "test": "echo 'No tests for worker yet'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "bullmq": "^5.41.5",
