@@ -39,11 +39,24 @@ This repository is scaffolded for the DealerForge CRM + AI Automation platform w
    pnpm --filter @dealerforge/api prisma:generate
    ```
 
-5. (Optional first run) create initial migration:
+5. Run migrations:
 
    ```bash
    pnpm --filter @dealerforge/api prisma:migrate --name init
    ```
+
+6. Seed Phase 1 foundation data:
+
+   ```bash
+   pnpm --filter @dealerforge/api prisma:seed
+   ```
+
+   Seeded users (all password `Password123!`):
+
+   - `admin@dealerforge.local` (ADMIN)
+   - `manager@dealerforge.local` (MANAGER)
+   - `sales1@dealerforge.local` (SALES)
+   - `sales2@dealerforge.local` (SALES)
 
 ## Run the monorepo
 
@@ -53,7 +66,7 @@ Start all apps with one command:
 pnpm dev
 ```
 
-- Web: http://localhost:3000/dashboard
+- Web: http://localhost:3000/login
 - API: http://localhost:4000/api/v1/health
 - Worker: runs against Redis at `REDIS_URL`
 
@@ -68,6 +81,31 @@ Required variables are documented in `.env.example`:
 - `JWT_SECRET`
 - `JWT_REFRESH_SECRET`
 
+## Auth + tenancy + RBAC (Phase 1)
+
+### Authentication endpoints
+
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
+
+### Tenancy resolution strategy (v1)
+
+Primary strategy: `X-Dealership-Id` request header.
+
+- All non-public endpoints require a valid JWT access token.
+- All endpoints except `/health` and `/auth/*` also require `X-Dealership-Id`.
+- The `TenantGuard` validates the authenticated user has membership in that dealership (`UserDealershipRole`).
+- On success, guard attaches `tenant` context to request: `{ dealershipId, role }`.
+- Service layer methods must explicitly accept `dealershipId` and include it in all Prisma `where`/`data` clauses.
+
+### RBAC strategy (v1)
+
+- Roles are stored in `UserDealershipRole.role` enum (`ADMIN`, `MANAGER`, `SALES`).
+- Use `@Roles(...)` on protected handlers.
+- `RolesGuard` reads active tenant role and enforces role constraints.
+
 ## Quality checks
 
 Run all workspace checks:
@@ -76,16 +114,4 @@ Run all workspace checks:
 pnpm lint
 pnpm build
 pnpm test
-```
-
-## API endpoint scaffolded
-
-- `GET /api/v1/health` returns:
-
-```json
-{
-  "status": "ok",
-  "service": "api",
-  "timestamp": "2026-01-01T00:00:00.000Z"
-}
 ```
