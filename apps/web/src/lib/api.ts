@@ -44,6 +44,29 @@ export type Lead = {
   source?: { id: string; name: string } | null;
 };
 
+
+export type ActivityType = 'CALL' | 'EMAIL' | 'SMS' | 'NOTE' | 'VISIT' | 'TEST_DRIVE' | 'OTHER';
+
+export type Activity = {
+  id: string;
+  type: ActivityType;
+  subject: string;
+  body: string | null;
+  outcome: string | null;
+  createdByUserId: string;
+  leadId: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUser: { id: string; firstName: string; lastName: string; email: string } | null;
+};
+
+export type CreateActivityPayload = {
+  type: ActivityType;
+  subject: string;
+  body?: string;
+  outcome?: string;
+};
+
 export type LeadFilters = {
   status?: LeadStatus;
   assignedTo?: string;
@@ -225,4 +248,31 @@ export async function updateLeadStatus(leadId: string, status: LeadStatus): Prom
   }
 
   return (await response.json()) as Lead;
+}
+
+
+export async function fetchLeadActivities(leadId: string): Promise<Activity[]> {
+  const response = await apiRequest(`/leads/${leadId}/activities`);
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch lead activities');
+  }
+
+  return (await response.json()) as Activity[];
+}
+
+export async function createLeadActivity(
+  leadId: string,
+  payload: CreateActivityPayload
+): Promise<Activity> {
+  const response = await apiRequest(`/leads/${leadId}/activities`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to create lead activity');
+  }
+
+  return (await response.json()) as Activity;
 }

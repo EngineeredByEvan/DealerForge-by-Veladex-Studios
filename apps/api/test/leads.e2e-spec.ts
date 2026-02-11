@@ -1,7 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
-import { LeadStatus, Role } from '@prisma/client';
+import { ActivityType, LeadStatus, Role } from '@prisma/client';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
@@ -16,6 +16,20 @@ type LeadSourceState = {
   id: string;
   dealershipId: string;
   name: string;
+};
+
+
+
+type ActivityState = {
+  id: string;
+  type: ActivityType;
+  subject: string;
+  body: string | null;
+  outcome: string | null;
+  createdByUserId: string;
+  leadId: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 type LeadState = {
@@ -101,7 +115,8 @@ describe('Leads endpoints (e2e)', () => {
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
         updatedAt: new Date('2026-01-01T00:00:00.000Z')
       }
-    ] as LeadState[]
+    ] as LeadState[],
+    activities: [] as ActivityState[]
   };
 
   const buildLeadResponse = (lead: LeadState) => ({
@@ -115,6 +130,17 @@ describe('Leads endpoints (e2e)', () => {
             : null;
         })()
       : null
+  });
+
+
+  const buildActivityResponse = (activity: ActivityState) => ({
+    ...activity,
+    createdByUser: (() => {
+      const user = state.users.find((candidate) => candidate.id === activity.createdByUserId);
+      return user
+        ? { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email }
+        : null;
+    })()
   });
 
   const prismaMock = {
@@ -224,16 +250,43 @@ describe('Leads endpoints (e2e)', () => {
         if (select) return { id: lead.id };
         return buildLeadResponse(lead);
       }),
-      update: jest.fn(async ({ where, data }: any) => {
+      update: jest.fn(async ({ where, data, select }: any) => {
         const lead = state.leads.find((candidate) => candidate.id === where.id);
         if (!lead) {
           throw new Error('Lead not found');
         }
 
         Object.assign(lead, data, { updatedAt: new Date() });
+        if (select) {
+          return { id: lead.id };
+        }
         return buildLeadResponse(lead);
       })
-    }
+    },
+    activity: {
+      findMany: jest.fn(async ({ where }: any) => {
+        return state.activities
+          .filter((activity) => activity.leadId === where.leadId)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .map(buildActivityResponse);
+      }),
+      create: jest.fn(async ({ data }: any) => {
+        const activity: ActivityState = {
+          id: `act-${state.activities.length + 1}`,
+          type: data.type,
+          subject: data.subject,
+          body: data.body ?? null,
+          outcome: data.outcome ?? null,
+          createdByUserId: data.createdByUserId,
+          leadId: data.leadId,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        state.activities.push(activity);
+        return buildActivityResponse(activity);
+      })
+    },
+    $transaction: jest.fn(async (operations: any[]) => Promise.all(operations))
   };
 
   const loginAsAdmin = async (): Promise<string> => {
@@ -332,6 +385,44 @@ describe('Leads endpoints (e2e)', () => {
       .expect(201);
 
     expect(statusRes.body.status).toBe(LeadStatus.QUALIFIED);
+
+    const createActivityRes = await request(app.getHttpServer())
+      .post(`/api/v1/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({
+        type: ActivityType.CALL,
+        subject: 'First contact call',
+        body: 'Discussed preferred trim and budget.',
+        outcome: 'Appointment proposed'
+      })
+      .expect(201);
+
+    expect(createActivityRes.body.leadId).toBe(leadId);
+    expect(createActivityRes.body.createdByUser.id).toBe('u-admin');
+
+    const listActivitiesRes = await request(app.getHttpServer())
+      .get(`/api/v1/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .expect(200);
+
+    expect(listActivitiesRes.body).toHaveLength(1);
+    expect(listActivitiesRes.body[0].type).toBe(ActivityType.CALL);
+
+    const leadAfterActivityRes = await request(app.getHttpServer())
+      .get(`/api/v1/leads/${leadId}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .expect(200);
+
+    expect(leadAfterActivityRes.body.lastActivityAt).not.toBeNull();
+
+    await request(app.getHttpServer())
+      .get(`/api/v1/leads/${leadId}/activities`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-2')
+      .expect(403);
 
     await request(app.getHttpServer())
       .get(`/api/v1/leads/${leadId}`)
