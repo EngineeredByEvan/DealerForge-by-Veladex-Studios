@@ -277,6 +277,25 @@ export async function createLeadActivity(
   return (await response.json()) as Activity;
 }
 
+
+export type ReportOverviewPeriod = {
+  leads: number;
+  appointments: number;
+  shows: number;
+  sold: number;
+};
+
+export type ReportOverviewResponse = {
+  today: ReportOverviewPeriod;
+  week: ReportOverviewPeriod;
+  month: ReportOverviewPeriod;
+};
+
+export type ReportResponseTimeResponse = {
+  averageMinutes: number | null;
+  sampleSize: number;
+};
+
 export type TaskStatus = 'OPEN' | 'DONE' | 'SNOOZED' | 'CANCELED';
 
 export type Task = {
@@ -471,4 +490,25 @@ export async function cancelAppointment(appointmentId: string): Promise<Appointm
   }
 
   return (await response.json()) as Appointment;
+}
+
+
+export async function fetchReportsOverview(): Promise<ReportOverviewResponse> {
+  const response = await apiRequest('/reports/overview');
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch reports overview');
+  }
+
+  return (await response.json()) as ReportOverviewResponse;
+}
+
+export async function fetchReportsResponseTime(): Promise<ReportResponseTimeResponse> {
+  const response = await apiRequest('/reports/response-time');
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch reports response time');
+  }
+
+  return (await response.json()) as ReportResponseTimeResponse;
 }
