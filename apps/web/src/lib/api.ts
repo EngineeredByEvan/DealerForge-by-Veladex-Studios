@@ -512,3 +512,70 @@ export async function fetchReportsResponseTime(): Promise<ReportResponseTimeResp
 
   return (await response.json()) as ReportResponseTimeResponse;
 }
+
+export type IntegrationProvider = 'GENERIC' | 'AUTOTRADER' | 'CARGURUS' | 'OEM_FORM' | 'REFERRAL';
+
+export type Integration = {
+  id: string;
+  dealershipId: string;
+  name: string;
+  provider: IntegrationProvider;
+  webhookSecret: string;
+  config: Record<string, unknown> | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count: { events: number };
+};
+
+export type CreateIntegrationPayload = {
+  name: string;
+  provider: IntegrationProvider;
+  webhookSecret?: string;
+  config?: Record<string, unknown>;
+  isActive?: boolean;
+};
+
+export type ImportCsvPayload = {
+  csv: string;
+  integrationId?: string;
+  source?: string;
+};
+
+export async function fetchIntegrations(): Promise<Integration[]> {
+  const response = await apiRequest('/integrations');
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch integrations');
+  }
+
+  return (await response.json()) as Integration[];
+}
+
+export async function createIntegration(payload: CreateIntegrationPayload): Promise<Integration> {
+  const response = await apiRequest('/integrations', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to create integration');
+  }
+
+  return (await response.json()) as Integration;
+}
+
+export async function importIntegrationsCsv(
+  payload: ImportCsvPayload
+): Promise<{ totalRows: number; successCount: number; failureCount: number }> {
+  const response = await apiRequest('/integrations/import/csv', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to import integrations CSV');
+  }
+
+  return (await response.json()) as { totalRows: number; successCount: number; failureCount: number };
+}

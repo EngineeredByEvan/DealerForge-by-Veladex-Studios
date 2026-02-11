@@ -48,6 +48,14 @@ enum AppointmentStatus {
   CANCELED
 }
 
+enum IntegrationProvider {
+  GENERIC
+  AUTOTRADER
+  CARGURUS
+  OEM_FORM
+  REFERRAL
+}
+
 model AutoGroup {
   id          String       @id @default(cuid())
   name        String
@@ -64,6 +72,8 @@ model Dealership {
   leads       Lead[]
   tasks       Task[]
   appointments Appointment[]
+  integrations Integration[]
+  integrationEvents IntegrationEvent[]
   users       UserDealershipRole[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
@@ -128,6 +138,7 @@ model Lead {
   activities        Activity[]
   tasks             Task[]
   appointments      Appointment[]
+  integrationEvents IntegrationEvent[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -136,6 +147,45 @@ model Lead {
   @@index([dealershipId, assignedToUserId])
   @@index([dealershipId, sourceId])
   @@index([dealershipId, lastActivityAt])
+}
+
+model Integration {
+  id            String              @id @default(cuid())
+  dealershipId  String
+  name          String
+  provider      IntegrationProvider
+  webhookSecret String
+  config        Json?
+  isActive      Boolean             @default(true)
+  dealership    Dealership          @relation(fields: [dealershipId], references: [id])
+  events        IntegrationEvent[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([dealershipId, name])
+  @@index([dealershipId])
+  @@index([dealershipId, provider])
+}
+
+model IntegrationEvent {
+  id            String              @id @default(cuid())
+  dealershipId  String
+  integrationId String?
+  provider      IntegrationProvider
+  rawPayload    Json
+  parsedPayload Json?
+  parsedOk      Boolean             @default(false)
+  error         String?
+  leadId        String?
+  receivedAt    DateTime            @default(now())
+  dealership    Dealership          @relation(fields: [dealershipId], references: [id])
+  integration   Integration?        @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  lead          Lead?               @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([dealershipId, receivedAt])
+  @@index([dealershipId, provider])
+  @@index([integrationId])
+  @@index([leadId])
 }
 
 model Appointment {

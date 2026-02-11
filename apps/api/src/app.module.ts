@@ -10,6 +10,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 
@@ -22,7 +23,8 @@ import { TasksModule } from './modules/tasks/tasks.module';
     TasksModule,
     AppointmentsModule,
     ReportsModule,
-    AdminModule
+    AdminModule,
+    IntegrationsModule
   ],
   providers: [
     PrismaService,
