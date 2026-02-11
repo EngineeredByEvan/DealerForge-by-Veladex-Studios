@@ -579,3 +579,87 @@ export async function importIntegrationsCsv(
 
   return (await response.json()) as { totalRows: number; successCount: number; failureCount: number };
 }
+
+export type AiChannel = 'SMS' | 'EMAIL';
+export type AiTone = 'FRIENDLY' | 'PROFESSIONAL' | 'DIRECT';
+
+export type AiSummaryResponse = {
+  leadId: string;
+  summary: string;
+};
+
+export type AiLeadScoreResponse = {
+  leadId: string;
+  score: number;
+  reasons: string[];
+};
+
+export type AiDraftFollowupResponse = {
+  leadId: string;
+  channel: AiChannel;
+  tone: AiTone;
+  message: string;
+};
+
+export type AiNextBestActionResponse = {
+  leadId: string;
+  action: string;
+  rationale: string;
+};
+
+export async function fetchLeadSummary(leadId: string): Promise<AiSummaryResponse> {
+  const response = await apiRequest('/ai/lead/summary', {
+    method: 'POST',
+    body: JSON.stringify({ leadId })
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to generate lead summary');
+  }
+
+  return (await response.json()) as AiSummaryResponse;
+}
+
+export async function fetchLeadScore(leadId: string): Promise<AiLeadScoreResponse> {
+  const response = await apiRequest('/ai/lead/score', {
+    method: 'POST',
+    body: JSON.stringify({ leadId })
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to generate lead score');
+  }
+
+  return (await response.json()) as AiLeadScoreResponse;
+}
+
+export async function draftLeadFollowup(payload: {
+  leadId: string;
+  channel?: AiChannel;
+  tone?: AiTone;
+  instruction?: string;
+}): Promise<AiDraftFollowupResponse> {
+  const response = await apiRequest('/ai/lead/draft-followup', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to generate follow-up draft');
+  }
+
+  return (await response.json()) as AiDraftFollowupResponse;
+}
+
+export async function fetchLeadNextBestAction(leadId: string): Promise<AiNextBestActionResponse> {
+  const response = await apiRequest('/ai/next-best-action', {
+    method: 'POST',
+    body: JSON.stringify({ leadId })
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to generate next best action');
+  }
+
+  return (await response.json()) as AiNextBestActionResponse;
+}

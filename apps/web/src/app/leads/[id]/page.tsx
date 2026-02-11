@@ -15,6 +15,7 @@ import {
   fetchLeadById,
   fetchTasks
 } from '@/lib/api';
+import { AiPanel } from '@/components/leads/ai-panel';
 
 type LeadDetailPageProps = {
   params: {
@@ -177,6 +178,9 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       <p>Vehicle interest: {lead.vehicleInterest ?? '—'}</p>
       <p>Assigned to: {lead.assignedToUserId ?? 'Unassigned'}</p>
       <p>Last activity: {lead.lastActivityAt ?? '—'}</p>
+
+
+      <AiPanel leadId={lead.id} />
 
       <section>
         <h2>Timeline</h2>

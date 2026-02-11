@@ -56,6 +56,14 @@ enum IntegrationProvider {
   REFERRAL
 }
 
+
+enum AiFeature {
+  lead_summary
+  lead_score
+  draft_followup
+  next_best_action
+}
+
 model AutoGroup {
   id          String       @id @default(cuid())
   name        String
@@ -74,6 +82,7 @@ model Dealership {
   appointments Appointment[]
   integrations Integration[]
   integrationEvents IntegrationEvent[]
+  aiRequestLogs AIRequestLog[]
   users       UserDealershipRole[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
@@ -139,6 +148,7 @@ model Lead {
   tasks             Task[]
   appointments      Appointment[]
   integrationEvents IntegrationEvent[]
+  aiRequestLogs AIRequestLog[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -244,4 +254,20 @@ model Activity {
 
   @@index([leadId, createdAt])
   @@index([createdByUserId])
+}
+
+
+model AIRequestLog {
+  id             String    @id @default(cuid())
+  dealershipId   String
+  leadId         String
+  feature        AiFeature
+  requestPayload Json
+  resultPayload  Json
+  createdAt      DateTime  @default(now())
+  dealership     Dealership @relation(fields: [dealershipId], references: [id])
+  lead           Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([dealershipId, leadId, createdAt])
+  @@index([dealershipId, feature])
 }
