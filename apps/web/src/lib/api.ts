@@ -375,3 +375,100 @@ export async function snoozeTask(taskId: string, dueAt: string): Promise<Task> {
 
   return (await response.json()) as Task;
 }
+
+export type AppointmentStatus = 'SET' | 'CONFIRMED' | 'SHOWED' | 'NO_SHOW' | 'CANCELED';
+
+export type Appointment = {
+  id: string;
+  dealershipId: string;
+  status: AppointmentStatus;
+  start_at: string;
+  end_at: string;
+  lead_id: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lead: { id: string; firstName: string | null; lastName: string | null; status: LeadStatus } | null;
+};
+
+export type AppointmentFilters = {
+  range?: string;
+};
+
+export type CreateAppointmentPayload = {
+  start_at: string;
+  end_at: string;
+  status?: AppointmentStatus;
+  lead_id?: string;
+  note?: string;
+};
+
+export type UpdateAppointmentPayload = Partial<CreateAppointmentPayload>;
+
+export async function fetchAppointments(filters?: AppointmentFilters): Promise<Appointment[]> {
+  const query = new URLSearchParams();
+  if (filters?.range) query.set('range', filters.range);
+
+  const response = await apiRequest(
+    `/appointments${query.toString() ? `?${query.toString()}` : ''}`
+  );
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch appointments');
+  }
+
+  return (await response.json()) as Appointment[];
+}
+
+export async function createAppointment(payload: CreateAppointmentPayload): Promise<Appointment> {
+  const response = await apiRequest('/appointments', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to create appointment');
+  }
+
+  return (await response.json()) as Appointment;
+}
+
+export async function updateAppointment(
+  appointmentId: string,
+  payload: UpdateAppointmentPayload
+): Promise<Appointment> {
+  const response = await apiRequest(`/appointments/${appointmentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to update appointment');
+  }
+
+  return (await response.json()) as Appointment;
+}
+
+export async function confirmAppointment(appointmentId: string): Promise<Appointment> {
+  const response = await apiRequest(`/appointments/${appointmentId}/confirm`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to confirm appointment');
+  }
+
+  return (await response.json()) as Appointment;
+}
+
+export async function cancelAppointment(appointmentId: string): Promise<Appointment> {
+  const response = await apiRequest(`/appointments/${appointmentId}/cancel`, {
+    method: 'POST'
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to cancel appointment');
+  }
+
+  return (await response.json()) as Appointment;
+}

@@ -4,10 +4,13 @@ import { FormEvent, useEffect, useState } from 'react';
 import {
   Activity,
   ActivityType,
+  Appointment,
   Lead,
   Task,
+  createAppointment,
   createLeadActivity,
   createTask,
+  fetchAppointments,
   fetchLeadActivities,
   fetchLeadById,
   fetchTasks
@@ -42,18 +45,24 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDueAt, setTaskDueAt] = useState('');
   const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointmentStartAt, setAppointmentStartAt] = useState('');
+  const [appointmentEndAt, setAppointmentEndAt] = useState('');
+  const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
 
   useEffect(() => {
     async function load(): Promise<void> {
       try {
-        const [leadResult, activityResult, taskResult] = await Promise.all([
+        const [leadResult, activityResult, taskResult, appointmentResult] = await Promise.all([
           fetchLeadById(params.id),
           fetchLeadActivities(params.id),
-          fetchTasks({ leadId: params.id })
+          fetchTasks({ leadId: params.id }),
+          fetchAppointments()
         ]);
         setLead(leadResult);
         setActivities(activityResult);
         setTasks(taskResult);
+        setAppointments(appointmentResult.filter((appointment) => appointment.lead_id === params.id));
       } catch {
         setError('Unable to load lead details');
       }
@@ -121,6 +130,29 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       setError('Unable to create lead task');
     } finally {
       setTaskSubmitting(false);
+    }
+  }
+
+
+
+  async function handleAppointmentCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    try {
+      setAppointmentSubmitting(true);
+      setError(null);
+      const created = await createAppointment({
+        start_at: appointmentStartAt,
+        end_at: appointmentEndAt,
+        lead_id: params.id
+      });
+      setAppointments((previous) => [created, ...previous]);
+      setAppointmentStartAt('');
+      setAppointmentEndAt('');
+    } catch {
+      setError('Unable to create lead appointment');
+    } finally {
+      setAppointmentSubmitting(false);
     }
   }
 
@@ -243,6 +275,51 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
               <br />
               <small>Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : '—'}</small>
               {task.description ? <p>{task.description}</p> : null}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+
+      <section>
+        <h2>Appointments</h2>
+        <form onSubmit={(event) => void handleAppointmentCreate(event)}>
+          <label htmlFor="appointmentStartAt">Start (ISO)</label>
+          <input
+            id="appointmentStartAt"
+            type="text"
+            placeholder="2026-02-01T15:00:00.000Z"
+            value={appointmentStartAt}
+            onChange={(event) => setAppointmentStartAt(event.target.value)}
+            required
+          />
+
+          <label htmlFor="appointmentEndAt">End (ISO)</label>
+          <input
+            id="appointmentEndAt"
+            type="text"
+            placeholder="2026-02-01T16:00:00.000Z"
+            value={appointmentEndAt}
+            onChange={(event) => setAppointmentEndAt(event.target.value)}
+            required
+          />
+
+          <button type="submit" disabled={appointmentSubmitting}>
+            {appointmentSubmitting ? 'Saving appointment...' : 'Book Appointment'}
+          </button>
+        </form>
+
+        {appointments.length === 0 ? <p>No appointments for this lead yet.</p> : null}
+        <ul>
+          {appointments.map((appointment) => (
+            <li key={appointment.id}>
+              <strong>{appointment.status}</strong>
+              <br />
+              <small>
+                {new Date(appointment.start_at).toLocaleString()} -{' '}
+                {new Date(appointment.end_at).toLocaleString()}
+              </small>
+              {appointment.note ? <p>{appointment.note}</p> : null}
             </li>
           ))}
         </ul>
