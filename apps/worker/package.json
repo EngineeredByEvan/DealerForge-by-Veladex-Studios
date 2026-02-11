@@ -1,0 +1,21 @@
+{
+  "name": "@dealerforge/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'No tests for worker yet'"
+  },
+  "dependencies": {
+    "bullmq": "^5.41.5",
+    "ioredis": "^5.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
