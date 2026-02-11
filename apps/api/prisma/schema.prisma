@@ -40,6 +40,14 @@ enum TaskStatus {
   CANCELED
 }
 
+enum AppointmentStatus {
+  SET
+  CONFIRMED
+  SHOWED
+  NO_SHOW
+  CANCELED
+}
+
 model AutoGroup {
   id          String       @id @default(cuid())
   name        String
@@ -55,6 +63,7 @@ model Dealership {
   autoGroup   AutoGroup            @relation(fields: [autoGroupId], references: [id])
   leads       Lead[]
   tasks       Task[]
+  appointments Appointment[]
   users       UserDealershipRole[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
@@ -118,6 +127,7 @@ model Lead {
   dealership        Dealership @relation(fields: [dealershipId], references: [id])
   activities        Activity[]
   tasks             Task[]
+  appointments      Appointment[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -126,6 +136,25 @@ model Lead {
   @@index([dealershipId, assignedToUserId])
   @@index([dealershipId, sourceId])
   @@index([dealershipId, lastActivityAt])
+}
+
+model Appointment {
+  id           String            @id @default(cuid())
+  dealershipId String
+  status       AppointmentStatus @default(SET)
+  start_at     DateTime
+  end_at       DateTime
+  lead_id      String?
+  note         String?
+  dealership   Dealership        @relation(fields: [dealershipId], references: [id])
+  lead         Lead?             @relation(fields: [lead_id], references: [id], onDelete: SetNull)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([dealershipId])
+  @@index([dealershipId, status])
+  @@index([dealershipId, start_at])
+  @@index([dealershipId, lead_id])
 }
 
 model Task {
