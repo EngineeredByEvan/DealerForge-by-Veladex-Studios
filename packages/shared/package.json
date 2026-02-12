@@ -15,5 +15,14 @@
   },
   "devDependencies": {
     "typescript": "^5.9.2"
-  }
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ]
 }

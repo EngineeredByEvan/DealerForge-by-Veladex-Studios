@@ -115,9 +115,14 @@ Run all workspace checks:
 
 ```bash
 pnpm lint
+pnpm typecheck
 pnpm build
 pnpm test
 ```
+
+Notes:
+- `@dealerforge/api` now runs `prisma generate` automatically before `typecheck` and `build` so Prisma client changes (including `AuditLog`) stay in sync.
+- `@dealerforge/shared` must be built for emitted JS/types (`pnpm --filter @dealerforge/shared build`) when consuming package outputs directly.
 
 
 ## CI workflow

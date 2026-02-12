@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, TooManyRequestsException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { IntegrationProvider, Prisma } from '@prisma/client';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -38,7 +38,7 @@ export class IntegrationsService {
         name: payload.name,
         provider: payload.provider,
         webhookSecret,
-        config: payload.config,
+        config: payload.config === undefined ? undefined : this.toPrismaJson(payload.config),
         isActive: payload.isActive ?? true
       },
       include: INTEGRATION_INCLUDE
@@ -84,7 +84,7 @@ export class IntegrationsService {
           dealershipId,
           integrationId: integration?.id,
           provider,
-          rawPayload: row,
+          rawPayload: this.toPrismaJson(row),
           parsedOk: false
         }
       });
@@ -98,7 +98,7 @@ export class IntegrationsService {
           where: { id: event.id },
           data: {
             parsedOk: true,
-            parsedPayload: leadPayload,
+            parsedPayload: this.toPrismaJson(leadPayload),
             leadId: lead.id,
             error: null
           }
@@ -156,7 +156,7 @@ export class IntegrationsService {
         dealershipId: integration.dealershipId,
         integrationId: integration.id,
         provider,
-        rawPayload: payload as Prisma.InputJsonValue,
+        rawPayload: this.toPrismaJson(payload),
         parsedOk: false
       }
     });
@@ -174,7 +174,7 @@ export class IntegrationsService {
         where: { id: event.id },
         data: {
           parsedOk: true,
-          parsedPayload: leadPayload,
+          parsedPayload: this.toPrismaJson(leadPayload),
           leadId: lead.id,
           error: null
         }
@@ -228,6 +228,15 @@ export class IntegrationsService {
         error: message
       };
     }
+  }
+
+
+  private toPrismaJson(payload: unknown): Prisma.InputJsonValue | Prisma.JsonNull {
+    if (payload === null || payload === undefined) {
+      return Prisma.JsonNull;
+    }
+
+    return payload as Prisma.InputJsonValue;
   }
 
   private resolveAdapter(_provider: IntegrationProvider): IntegrationAdapter {
@@ -308,7 +317,7 @@ export class IntegrationsService {
 
     if (recentHits.length >= this.webhookRateLimitMax) {
       this.webhookHits.set(key, recentHits);
-      throw new TooManyRequestsException('Webhook rate limit exceeded');
+      throw new HttpException('Webhook rate limit exceeded', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     recentHits.push(now);
