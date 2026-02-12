@@ -131,6 +131,13 @@ Notes:
 - `@dealerforge/api` now runs `prisma generate` automatically before `typecheck` and `build` so Prisma client changes (including `AuditLog`) stay in sync.
 - `@dealerforge/shared` must be built for emitted JS/types (`pnpm --filter @dealerforge/shared build`) when consuming package outputs directly.
 
+If you see `Nest can't resolve dependencies of the AuditService (PrismaService)` DI error, these are the checks:
+- `apps/api/src/common/prisma/prisma.module.ts` must provide and export `PrismaService`.
+- `apps/api/src/common/prisma/prisma.service.ts` must be the only `PrismaService` implementation and be marked `@Injectable()`.
+- `apps/api/src/modules/audit/audit.module.ts` must import `PrismaModule` (or rely on global Prisma module wiring).
+- `apps/api/src/app.module.ts` should import `PrismaModule` once so bootstrap wiring stays explicit.
+- All API imports should reference `../../common/prisma/prisma.service` (single token/path).
+
 
 ## CI workflow
 
