@@ -16,17 +16,12 @@ export type AuditEventInput = {
 };
 
 @Injectable()
-export class AuditService implements OnModuleInit {
-  constructor(@Optional() private readonly prisma?: PrismaService) {}
-
-  onModuleInit(): void {
-    const mode = this.prisma ? 'PRISMA' : 'NOOP';
-    console.log(`AuditService running in ${mode} mode`);
-  }
+export class AuditService {
+  constructor(private readonly prisma: PrismaService | null, private readonly mode: 'PRISMA' | 'NOOP') {}
 
   async logEvent(input: AuditEventInput) {
     if (!this.prisma) {
-      // TODO: Restore strict Prisma-backed audit writes once PrismaService token/wiring mismatches are fully resolved.
+      // TODO: Restore Prisma-backed logging only once PrismaService DI wiring is fully stable in every runtime path.
       return null;
     }
 
@@ -65,6 +60,6 @@ export class AuditService implements OnModuleInit {
   }
 
   getMode(): 'PRISMA' | 'NOOP' {
-    return this.prisma ? 'PRISMA' : 'NOOP';
+    return this.mode;
   }
 }

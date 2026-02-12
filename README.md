@@ -145,7 +145,7 @@ If you see `Nest can't resolve dependencies of the AuditService (PrismaService)`
   - `apps/web/src/components/app-shell.tsx` now types the component return as `JSX.Element | null` so conditional early returns (`return null`) are valid during static type checking and `next build` can pass.
 
 - **API boot fails resolving `AuditService` -> `PrismaService`**
-  - `apps/api/src/modules/audit/audit.service.ts` now resolves `PrismaService` as an optional dependency so audit can initialize even when Prisma DI tokens are mismatched at runtime.
+  - `apps/api/src/modules/audit/audit.module.ts` now provides `AuditService` through a factory that checks whether `PrismaService` can be resolved at runtime.
   - If Prisma is available, audit runs in `PRISMA` mode and uses database-backed logging.
   - If Prisma is not available, audit runs in `NOOP` mode so Nest bootstrap is not blocked (temporary fallback).
   - On startup, a diagnostic log is emitted: `AuditService running in PRISMA mode` or `AuditService running in NOOP mode`.
