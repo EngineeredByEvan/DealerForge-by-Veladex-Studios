@@ -139,6 +139,18 @@ If you see `Nest can't resolve dependencies of the AuditService (PrismaService)`
 - All API imports should reference `../../common/prisma/prisma.service` (single token/path).
 
 
+## Troubleshooting
+
+- **Next.js build error in `AppShell` (`Type 'null' is not assignable to type 'Element'`)**
+  - `apps/web/src/components/app-shell.tsx` now types the component return as `JSX.Element | null` so conditional early returns (`return null`) are valid during static type checking and `next build` can pass.
+
+- **API boot fails resolving `AuditService` -> `PrismaService`**
+  - `apps/api/src/modules/audit/audit.module.ts` now provides `AuditService` through a factory that checks whether `PrismaService` can be resolved at runtime.
+  - If Prisma is available, audit runs in `PRISMA` mode and uses database-backed logging.
+  - If Prisma is not available, audit runs in `NOOP` mode so Nest bootstrap is not blocked (temporary fallback).
+  - On startup, a diagnostic log is emitted: `AuditService running in PRISMA mode` or `AuditService running in NOOP mode`.
+  - TODO is documented in `apps/api/src/modules/audit/audit.service.ts` to restore strict Prisma-backed logging once DI wiring is stable in all runtime paths.
+
 ## CI workflow
 
 GitHub Actions runs `.github/workflows/ci.yml` on every pull request and on pushes to `main`.

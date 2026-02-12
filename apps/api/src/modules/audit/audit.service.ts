@@ -17,9 +17,14 @@ export type AuditEventInput = {
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService | null, private readonly mode: 'PRISMA' | 'NOOP') {}
 
   async logEvent(input: AuditEventInput) {
+    if (!this.prisma) {
+      // TODO: Restore Prisma-backed logging only once PrismaService DI wiring is fully stable in every runtime path.
+      return null;
+    }
+
     return this.prisma.auditLog.create({
       data: {
         dealershipId: input.dealershipId,
@@ -33,6 +38,10 @@ export class AuditService {
   }
 
   async listRecent(dealershipId: string, limit = 50) {
+    if (!this.prisma) {
+      return [];
+    }
+
     return this.prisma.auditLog.findMany({
       where: { dealershipId },
       include: {
@@ -48,5 +57,9 @@ export class AuditService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(limit, 1), 200)
     });
+  }
+
+  getMode(): 'PRISMA' | 'NOOP' {
+    return this.mode;
   }
 }
