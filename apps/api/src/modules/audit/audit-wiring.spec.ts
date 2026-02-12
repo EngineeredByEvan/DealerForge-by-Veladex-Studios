@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { MODULE_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../app.module';
 import { PrismaModule } from '../../common/prisma/prisma.module';
@@ -22,6 +23,14 @@ const modulesUsingAuditService = [
 ] as const;
 
 describe('Audit and Prisma module wiring', () => {
+  it('keeps PrismaService provided and exported by PrismaModule', () => {
+    const providers = Reflect.getMetadata(MODULE_METADATA.PROVIDERS, PrismaModule) as unknown[];
+    const exportsMetadata = Reflect.getMetadata(MODULE_METADATA.EXPORTS, PrismaModule) as unknown[];
+
+    expect(providers).toContain(PrismaService);
+    expect(exportsMetadata).toContain(PrismaService);
+  });
+
   it('keeps PrismaModule imported by AuditModule', () => {
     const imports = Reflect.getMetadata(MODULE_IMPORTS_METADATA, AuditModule) as unknown[];
 
