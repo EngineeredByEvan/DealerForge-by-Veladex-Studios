@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '../../common/prisma/prisma.module';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditController } from './audit.controller';
 import { AuditService } from './audit.service';
 
 @Module({
-  imports: [PrismaModule],
+  // You can remove PrismaModule entirely for now.
+  // This guarantees PrismaService is in the AuditModule DI context.
+  providers: [PrismaService, AuditService],
   controllers: [AuditController],
-  providers: [AuditService],
-  exports: [AuditService]
+  exports: [AuditService],
 })
 export class AuditModule {}
