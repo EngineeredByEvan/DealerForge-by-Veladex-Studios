@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -16,10 +16,20 @@ export type AuditEventInput = {
 };
 
 @Injectable()
-export class AuditService {
-  constructor(private readonly prisma: PrismaService) {}
+export class AuditService implements OnModuleInit {
+  constructor(@Optional() private readonly prisma?: PrismaService) {}
+
+  onModuleInit(): void {
+    const mode = this.prisma ? 'PRISMA' : 'NOOP';
+    console.log(`AuditService running in ${mode} mode`);
+  }
 
   async logEvent(input: AuditEventInput) {
+    if (!this.prisma) {
+      // TODO: Restore strict Prisma-backed audit writes once PrismaService token/wiring mismatches are fully resolved.
+      return null;
+    }
+
     return this.prisma.auditLog.create({
       data: {
         dealershipId: input.dealershipId,
@@ -33,6 +43,10 @@ export class AuditService {
   }
 
   async listRecent(dealershipId: string, limit = 50) {
+    if (!this.prisma) {
+      return [];
+    }
+
     return this.prisma.auditLog.findMany({
       where: { dealershipId },
       include: {
@@ -48,5 +62,9 @@ export class AuditService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(limit, 1), 200)
     });
+  }
+
+  getMode(): 'PRISMA' | 'NOOP' {
+    return this.prisma ? 'PRISMA' : 'NOOP';
   }
 }

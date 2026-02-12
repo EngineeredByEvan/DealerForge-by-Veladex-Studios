@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { clearAuth, fetchMe, getSelectedDealershipId, setSelectedDealershipId } from '@/lib/api';
 
-export function AppShell(): JSX.Element {
+export function AppShell(): JSX.Element | null {
   const pathname = usePathname();
   const router = useRouter();
   const [dealerships, setDealerships] = useState<Array<{ dealershipId: string; dealershipName: string; role: string }>>([]);
