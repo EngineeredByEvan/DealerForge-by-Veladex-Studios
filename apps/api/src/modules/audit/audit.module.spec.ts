@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
-import { PRISMA_SERVICE, PrismaModule } from '../../common/prisma/prisma.module';
+import { PrismaModule } from '../../common/prisma/prisma.module';
+import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditModule } from './audit.module';
 import { AuditService } from './audit.service';
 
@@ -10,6 +11,6 @@ describe('AuditModule', () => {
     }).compile();
 
     expect(moduleRef.get(AuditService)).toBeDefined();
-    expect(moduleRef.get(PRISMA_SERVICE)).toBeDefined();
+    expect(moduleRef.get(PrismaService)).toBeDefined();
   });
 });

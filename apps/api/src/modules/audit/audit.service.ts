@@ -1,6 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PRISMA_SERVICE } from '../../common/prisma/prisma.module';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 export type AuditActor = {
@@ -19,7 +18,7 @@ export type AuditEventInput = {
 @Injectable()
 export class AuditService {
   constructor(
-    @Inject(PRISMA_SERVICE) private readonly prisma: PrismaService
+    private readonly prisma: PrismaService
   ) {}
 
   async logEvent(input: AuditEventInput) {
