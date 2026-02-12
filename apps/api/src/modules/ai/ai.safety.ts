@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const PHONE_REGEX = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 
@@ -17,13 +19,17 @@ export function redactName(firstName?: string | null, lastName?: string | null):
   return redacted.length > 0 ? redacted : 'Unknown';
 }
 
-export function redactJson(payload: unknown): unknown {
+export function redactJson(payload: unknown): Prisma.InputJsonValue | Prisma.JsonNull {
   if (payload === null || payload === undefined) {
-    return payload;
+    return Prisma.JsonNull;
   }
 
   if (typeof payload === 'string') {
     return redactText(payload);
+  }
+
+  if (typeof payload === 'number' || typeof payload === 'boolean') {
+    return payload;
   }
 
   if (Array.isArray(payload)) {
@@ -32,7 +38,7 @@ export function redactJson(payload: unknown): unknown {
 
   if (typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
-    const output: Record<string, unknown> = {};
+    const output: Record<string, Prisma.InputJsonValue | Prisma.JsonNull> = {};
 
     for (const [key, value] of Object.entries(record)) {
       const lowered = key.toLowerCase();
@@ -41,7 +47,11 @@ export function redactJson(payload: unknown): unknown {
         continue;
       }
 
-      if (['message', 'summary', 'instruction', 'subject', 'body', 'outcome', 'vehicleinterest'].includes(lowered)) {
+      if (
+        ['message', 'summary', 'instruction', 'subject', 'body', 'outcome', 'vehicleinterest'].includes(
+          lowered
+        )
+      ) {
         output[key] = '[REDACTED_TEXT]';
         continue;
       }
@@ -52,5 +62,5 @@ export function redactJson(payload: unknown): unknown {
     return output;
   }
 
-  return payload;
+  return String(payload);
 }
