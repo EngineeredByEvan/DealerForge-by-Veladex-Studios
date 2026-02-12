@@ -72,7 +72,7 @@ export function redactJson(payload: unknown): Prisma.InputJsonValue | typeof Pri
   const redacted = redactJsonValue(payload);
 
   if (redacted === null) {
-    return Prisma.JsonNull;
+    return Prisma.JsonNull as unknown as Prisma.InputJsonValue;
   }
 
   return redacted;
