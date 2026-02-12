@@ -37,7 +37,7 @@ export function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   const normalized = toInputJsonInternal(value);
 
   if (normalized === null) {
-    return Prisma.JsonNull;
+    return Prisma.JsonNull as unknown as Prisma.InputJsonValue;
   }
 
   return normalized;
