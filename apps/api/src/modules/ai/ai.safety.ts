@@ -25,7 +25,7 @@ function redactJsonValue(payload: unknown): Prisma.InputJsonValue | null {
   }
 
   if (isRecord(payload)) {
-    const output: Prisma.InputJsonObject = {};
+    const output: Record<string, Prisma.InputJsonValue | null> = {};
 
     for (const [key, value] of Object.entries(payload)) {
       const lowered = key.toLowerCase();
@@ -46,7 +46,7 @@ function redactJsonValue(payload: unknown): Prisma.InputJsonValue | null {
       output[key] = redactJsonValue(value);
     }
 
-    return output;
+    return output as Prisma.InputJsonObject;
   }
 
   return String(payload);
@@ -68,7 +68,7 @@ export function redactName(firstName?: string | null, lastName?: string | null):
   return redacted.length > 0 ? redacted : 'Unknown';
 }
 
-export function redactJson(payload: unknown): Prisma.InputJsonValue | Prisma.JsonNull {
+export function redactJson(payload: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   const redacted = redactJsonValue(payload);
 
   if (redacted === null) {

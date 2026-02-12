@@ -10,6 +10,11 @@ export function AppShell(): JSX.Element {
   const router = useRouter();
   const [dealerships, setDealerships] = useState<Array<{ dealershipId: string; dealershipName: string; role: string }>>([]);
   const [selectedDealership, setSelectedDealership] = useState('');
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     async function loadProfile(): Promise<void> {
@@ -31,8 +36,8 @@ export function AppShell(): JSX.Element {
     void loadProfile();
   }, [pathname, router]);
 
-  if (pathname === '/login') {
-    return <></>;
+  if (!isMounted || pathname === '/login') {
+    return null;
   }
 
   return (
