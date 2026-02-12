@@ -68,7 +68,7 @@ export function redactName(firstName?: string | null, lastName?: string | null):
   return redacted.length > 0 ? redacted : 'Unknown';
 }
 
-export function redactJson(payload: unknown): Prisma.InputJsonValue {
+export function redactJson(payload: unknown): Prisma.InputJsonValue | typeof Prisma.JsonNull {
   const redacted = redactJsonValue(payload);
 
   if (redacted === null) {
