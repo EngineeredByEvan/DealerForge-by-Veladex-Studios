@@ -21,19 +21,19 @@ function toInputJsonInternal(value: unknown): PrismaJson {
   }
 
   if (isPlainObject(value)) {
-    const output: Prisma.InputJsonObject = {};
+    const output: Record<string, PrismaJson> = {};
 
     for (const [key, item] of Object.entries(value)) {
       output[key] = toInputJsonInternal(item);
     }
 
-    return output;
+    return output as Prisma.InputJsonObject;
   }
 
   return String(value);
 }
 
-export function toPrismaJson(value: unknown): Prisma.InputJsonValue | Prisma.JsonNull {
+export function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   const normalized = toInputJsonInternal(value);
 
   if (normalized === null) {
