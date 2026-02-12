@@ -8,6 +8,14 @@ import 'dotenv/config';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
+  const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+
+  app.enableCors({
+    origin: webOrigin,
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Dealership-Id']
+  });
+
   app.setGlobalPrefix('api/v1');
   app.enableShutdownHooks();
 
