@@ -4,7 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
-import { PrismaService } from './common/prisma/prisma.service';
+import { PrismaModule } from './common/prisma/prisma.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
@@ -19,6 +19,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 @Module({
   imports: [
     JwtModule.register({}),
+    PrismaModule,
     HealthModule,
     AuthModule,
     LeadsModule,
@@ -31,7 +32,6 @@ import { TasksModule } from './modules/tasks/tasks.module';
     AuditModule
   ],
   providers: [
-    PrismaService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard
