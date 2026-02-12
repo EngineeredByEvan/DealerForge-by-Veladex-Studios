@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -17,7 +17,7 @@ export type AuditEventInput = {
 
 @Injectable()
 export class AuditService {
-  constructor(private readonly prisma: PrismaService | null, private readonly mode: 'PRISMA' | 'NOOP') {}
+  constructor(@Optional() private readonly prisma?: PrismaService) {}
 
   async logEvent(input: AuditEventInput) {
     if (!this.prisma) {
@@ -60,6 +60,6 @@ export class AuditService {
   }
 
   getMode(): 'PRISMA' | 'NOOP' {
-    return this.mode;
+    return this.prisma ? 'PRISMA' : 'NOOP';
   }
 }
