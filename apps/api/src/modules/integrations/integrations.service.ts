@@ -1,5 +1,6 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { IntegrationProvider, Prisma } from '@prisma/client';
+import { toPrismaJson } from '../../common/prisma/prisma-json';
 import { randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -38,7 +39,7 @@ export class IntegrationsService {
         name: payload.name,
         provider: payload.provider,
         webhookSecret,
-        config: payload.config === undefined ? undefined : this.toPrismaJson(payload.config),
+        config: payload.config === undefined ? undefined : toPrismaJson(payload.config),
         isActive: payload.isActive ?? true
       },
       include: INTEGRATION_INCLUDE
@@ -84,7 +85,7 @@ export class IntegrationsService {
           dealershipId,
           integrationId: integration?.id,
           provider,
-          rawPayload: this.toPrismaJson(row),
+          rawPayload: toPrismaJson(row),
           parsedOk: false
         }
       });
@@ -98,7 +99,7 @@ export class IntegrationsService {
           where: { id: event.id },
           data: {
             parsedOk: true,
-            parsedPayload: this.toPrismaJson(leadPayload),
+            parsedPayload: toPrismaJson(leadPayload),
             leadId: lead.id,
             error: null
           }
@@ -156,7 +157,7 @@ export class IntegrationsService {
         dealershipId: integration.dealershipId,
         integrationId: integration.id,
         provider,
-        rawPayload: this.toPrismaJson(payload),
+        rawPayload: toPrismaJson(payload),
         parsedOk: false
       }
     });
@@ -174,7 +175,7 @@ export class IntegrationsService {
         where: { id: event.id },
         data: {
           parsedOk: true,
-          parsedPayload: this.toPrismaJson(leadPayload),
+          parsedPayload: toPrismaJson(leadPayload),
           leadId: lead.id,
           error: null
         }
@@ -230,14 +231,6 @@ export class IntegrationsService {
     }
   }
 
-
-  private toPrismaJson(payload: unknown): Prisma.InputJsonValue | Prisma.JsonNull {
-    if (payload === null || payload === undefined) {
-      return Prisma.JsonNull;
-    }
-
-    return payload as Prisma.InputJsonValue;
-  }
 
   private resolveAdapter(_provider: IntegrationProvider): IntegrationAdapter {
     return this.genericAdapter;
