@@ -3,22 +3,18 @@ import { IntegrationAdapter, LeadInboundDto } from './integration-adapter.interf
 
 type GenericPayload = Record<string, unknown>;
 
-function isGenericPayload(payload: unknown): payload is GenericPayload {
-  return typeof payload === 'object' && payload !== null && !Array.isArray(payload);
-}
-
 export class GenericAdapter implements IntegrationAdapter {
   parseInbound(payload: unknown): LeadInboundDto {
-    if (!isGenericPayload(payload)) {
-      throw new BadRequestException('Inbound payload must be an object');
-    }
+    const obj = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
 
-    const source = this.toString(payload, ['source', 'leadSource', 'provider']);
-    const firstName = this.toString(payload, ['firstName', 'first_name', 'fname']);
-    const lastName = this.toString(payload, ['lastName', 'last_name', 'lname']);
-    const email = this.toString(payload, ['email', 'emailAddress', 'email_address']);
-    const phone = this.toString(payload, ['phone', 'phoneNumber', 'phone_number', 'mobile']);
-    const vehicleInterest = this.toString(payload, [
+    const source = this.toString(obj, ['source', 'leadSource', 'provider']);
+    const firstName = this.toString(obj, ['firstName', 'first_name', 'fname']);
+    const lastName = this.toString(obj, ['lastName', 'last_name', 'lname']);
+    const email = this.toString(obj, ['email', 'emailAddress', 'email_address']);
+    const phone = this.toString(obj, ['phone', 'phoneNumber', 'phone_number', 'mobile']);
+    const vehicleInterest = this.toString(obj, [
       'vehicleInterest',
       'vehicle_interest',
       'vehicle',

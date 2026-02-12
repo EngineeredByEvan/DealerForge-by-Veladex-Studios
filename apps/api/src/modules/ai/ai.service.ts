@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { toPrismaJson } from '../../common/prisma/prisma-json';
 import { AuditService } from '../audit/audit.service';
 import { redactJson, redactName, redactText } from './ai.safety';
 import { AiChannel, AiFeature, AiLeadContext, AiTone, LeadScoreResult } from './ai.types';
@@ -243,8 +244,8 @@ export class AiService {
         dealershipId,
         leadId,
         feature,
-        requestPayload: redactJson(requestPayload),
-        resultPayload: redactJson(resultPayload)
+        requestPayload: toPrismaJson(redactJson(requestPayload)),
+        resultPayload: toPrismaJson(redactJson(resultPayload))
       }
     });
   }
