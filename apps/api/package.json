@@ -14,7 +14,8 @@
     "prisma:seed": "ts-node prisma/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prebuild": "pnpm prisma:generate",
-    "pretypecheck": "pnpm prisma:generate"
+    "pretypecheck": "pnpm prisma:generate",
+    "prisma:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@dealerforge/shared": "workspace:*",

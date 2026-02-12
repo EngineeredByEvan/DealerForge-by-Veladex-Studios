@@ -44,8 +44,15 @@ This repository is scaffolded for the DealerForge CRM + AI Automation platform w
 5. Run migrations:
 
    ```bash
-   pnpm --filter @dealerforge/api prisma:migrate --name init
+   pnpm --filter @dealerforge/api prisma:migrate -- --name init
    ```
+
+
+For production/staging deploys, apply committed migrations with:
+
+```bash
+pnpm --filter @dealerforge/api prisma:deploy
+```
 
 6. Seed Phase 1 foundation data:
 
