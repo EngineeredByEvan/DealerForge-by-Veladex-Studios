@@ -5,6 +5,11 @@ export enum CommunicationChannel {
   NOTE = 'NOTE'
 }
 
+export enum CommunicationDirection {
+  OUTBOUND = 'OUTBOUND',
+  INBOUND = 'INBOUND'
+}
+
 import { MessageDirection } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
