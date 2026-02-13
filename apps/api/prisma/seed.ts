@@ -92,6 +92,43 @@ async function main(): Promise<void> {
     }
   }
 
+
+  for (const dealership of dealerships) {
+    const slugPrefix = dealership.slug.replace(/[^a-z0-9]+/gi, '-');
+    const perStoreUsers = [
+      { email: `manager+${slugPrefix}@dealerforge.local`, firstName: 'Store', lastName: 'Manager', role: Role.MANAGER },
+      { email: `sales1+${slugPrefix}@dealerforge.local`, firstName: 'Store', lastName: 'SalesOne', role: Role.SALES },
+      { email: `sales2+${slugPrefix}@dealerforge.local`, firstName: 'Store', lastName: 'SalesTwo', role: Role.SALES }
+    ] as const;
+
+    for (const userInput of perStoreUsers) {
+      const user = await prisma.user.upsert({
+        where: { email: userInput.email },
+        update: {
+          firstName: userInput.firstName,
+          lastName: userInput.lastName,
+          passwordHash,
+          isPlatformAdmin: false,
+          isPlatformOperator: false
+        },
+        create: {
+          email: userInput.email,
+          firstName: userInput.firstName,
+          lastName: userInput.lastName,
+          passwordHash,
+          isPlatformAdmin: false,
+          isPlatformOperator: false
+        }
+      });
+
+      await prisma.userDealershipRole.upsert({
+        where: { userId_dealershipId: { userId: user.id, dealershipId: dealership.id } },
+        update: { role: userInput.role, isActive: true },
+        create: { userId: user.id, dealershipId: dealership.id, role: userInput.role, isActive: true }
+      });
+    }
+  }
+
   const salesUser = createdUsers.get('sales1@dealerforge.local');
   const managerUser = createdUsers.get('manager@dealerforge.local');
   if (!salesUser || !managerUser) throw new Error('Expected seeded users to exist');

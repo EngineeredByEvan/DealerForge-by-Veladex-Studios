@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
 import { AuthUser } from '../../common/types/request-context';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto } from './auth.dto';
+import { AcceptInvitationDto, LoginDto, RefreshDto } from './auth.dto';
 
 type RequestWithUser = Request & { user?: AuthUser };
 
@@ -24,6 +24,21 @@ export class AuthController {
   @Post('refresh')
   refresh(@Body() dto: RefreshDto): Promise<{ accessToken: string; refreshToken: string }> {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+
+  @Public()
+  @SkipTenant()
+  @Get('invitations/:token')
+  invitation(@Param('token') token: string) {
+    return this.authService.getInvitation(token);
+  }
+
+  @Public()
+  @SkipTenant()
+  @Post('accept-invitation')
+  acceptInvitation(@Body() payload: AcceptInvitationDto): Promise<{ accessToken: string; refreshToken: string }> {
+    return this.authService.acceptInvitation(payload);
   }
 
   @SkipTenant()

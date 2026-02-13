@@ -20,12 +20,16 @@ import {
   UpdateLeadStatusDto
 } from './leads.dto';
 import { LeadsService } from './leads.service';
+import { LeadScoringService } from './lead-scoring.service';
 
 type TenantRequest = Request & { tenant?: TenantContext; user?: AuthUser };
 
 @Controller('leads')
 export class LeadsController {
-  constructor(private readonly leadsService: LeadsService) {}
+  constructor(
+    private readonly leadsService: LeadsService,
+    private readonly leadScoringService: LeadScoringService
+  ) {}
 
   @Get()
   findAll(@Req() req: TenantRequest, @Query() query: ListLeadsQueryDto) {
@@ -47,6 +51,16 @@ export class LeadsController {
     return this.leadsService.findById(req.tenant!.dealershipId, leadId);
   }
 
+
+  @Get(':id/messages')
+  messages(
+    @Req() req: TenantRequest,
+    @Param('id') leadId: string,
+    @Query('channel') channel?: 'SMS' | 'EMAIL' | 'CALL' | 'NOTE'
+  ) {
+    return this.leadsService.listLeadMessages(req.tenant!.dealershipId, leadId, channel);
+  }
+
   @Get(':id/timeline')
   timeline(
     @Req() req: TenantRequest,
@@ -56,6 +70,12 @@ export class LeadsController {
   ) {
     return this.leadsService.listTimeline(req.tenant!.dealershipId, leadId, limit, cursor);
   }
+
+  @Get(':id/ai/lead-score')
+  leadScore(@Req() req: TenantRequest, @Param('id') leadId: string) {
+    return this.leadScoringService.calculateLeadScore(leadId, req.tenant!.dealershipId);
+  }
+
   @Patch(':id')
   update(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: UpdateLeadDto) {
     return this.leadsService.updateLead(req.tenant!.dealershipId, leadId, payload, req.user?.userId);

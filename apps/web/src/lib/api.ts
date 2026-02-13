@@ -415,8 +415,9 @@ export async function createOrGetThread(leadId: string): Promise<ConversationThr
   return (await response.json()) as ConversationThread;
 }
 
-export async function fetchMessagesByLead(leadId: string): Promise<Message[]> {
-  const response = await apiRequest(`/communications/messages?leadId=${encodeURIComponent(leadId)}`);
+export async function fetchMessagesByLead(leadId: string, channel?: MessageChannel): Promise<Message[]> {
+  const query = channel ? `?channel=${encodeURIComponent(channel)}` : '';
+  const response = await apiRequest(`/leads/${leadId}/messages${query}`);
   if (!response.ok) throw new Error('Unable to fetch messages');
   return (await response.json()) as Message[];
 }
@@ -917,7 +918,17 @@ export type AiSummaryResponse = {
 export type AiLeadScoreResponse = {
   leadId: string;
   score: number;
+  breakdown: {
+    contactability: number;
+    engagement: number;
+    appointment: number;
+    stage: number;
+    freshness: number;
+    penalty: number;
+    total: number;
+  };
   reasons: string[];
+  updatedAt: string;
 };
 
 export type AiDraftFollowupResponse = {
@@ -947,10 +958,7 @@ export async function fetchLeadSummary(leadId: string): Promise<AiSummaryRespons
 }
 
 export async function fetchLeadScore(leadId: string): Promise<AiLeadScoreResponse> {
-  const response = await apiRequest('/ai/lead/score', {
-    method: 'POST',
-    body: JSON.stringify({ leadId })
-  });
+  const response = await apiRequest(`/leads/${leadId}/ai/lead-score`);
 
   if (!response.ok) {
     throw new Error('Unable to generate lead score');
@@ -1129,6 +1137,17 @@ export async function fetchTeamUsers(): Promise<TeamMembership[]> {
   return (await response.json()) as TeamMembership[];
 }
 
+export type TeamInvitation = {
+  id: string;
+  token: string;
+  email: string;
+  role: TeamMembership['role'];
+  expiresAt: string;
+  status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+  acceptedAt?: string | null;
+  dealershipName?: string;
+};
+
 export async function inviteTeamUser(payload: { email: string; role: TeamMembership['role'] }) {
   const response = await apiRequest('/team/invitations', {
     method: 'POST',
@@ -1136,7 +1155,25 @@ export async function inviteTeamUser(payload: { email: string; role: TeamMembers
   });
 
   if (!response.ok) throw new Error('Unable to invite user');
-  return (await response.json()) as { token: string; status: string };
+  return (await response.json()) as { token: string; status: string; id: string };
+}
+
+
+export async function fetchTeamInvitations(): Promise<TeamInvitation[]> {
+  const response = await apiRequest('/team/invitations');
+  if (!response.ok) throw new Error('Unable to fetch invitations');
+  return (await response.json()) as TeamInvitation[];
+}
+
+export async function revokeTeamInvitation(invitationId: string): Promise<void> {
+  const response = await apiRequest(`/team/invitations/${invitationId}/revoke`, { method: 'POST' });
+  if (!response.ok) throw new Error('Unable to revoke invitation');
+}
+
+export async function fetchInvitation(token: string): Promise<{ email: string; role: string; dealershipName: string; expiresAt: string; status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED' }> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/invitations/${encodeURIComponent(token)}`);
+  if (!response.ok) throw new Error('Unable to fetch invitation');
+  return (await response.json()) as { email: string; role: string; dealershipName: string; expiresAt: string; status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED' };
 }
 
 export async function setTeamUserRole(userId: string, role: TeamMembership['role']): Promise<void> {
@@ -1156,17 +1193,20 @@ export async function deactivateTeamUser(userId: string): Promise<void> {
 export async function acceptInvitation(payload: {
   token: string;
   password: string;
-  firstName?: string;
-  lastName?: string;
+  firstName: string;
+  lastName: string;
 }): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/team/invitations/accept`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/accept-invitation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) throw new Error('Unable to accept invitation');
+  const tokens = (await response.json()) as { accessToken: string; refreshToken: string };
+  setTokens(tokens);
 }
+
 
 export type PlatformMembership = {
   id: string;

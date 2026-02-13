@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { LeadStatus, LeadType, Prisma, Role } from '@prisma/client';
+import { LeadStatus, LeadType, MessageChannel, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
@@ -179,6 +179,25 @@ export class LeadsService {
     return lead;
   }
 
+
+
+  async listLeadMessages(dealershipId: string, leadId: string, channel?: MessageChannel) {
+    await this.ensureLeadExists(dealershipId, leadId);
+
+    return this.prisma.message.findMany({
+      where: {
+        dealershipId,
+        thread: { leadId, dealershipId },
+        ...(channel ? { channel } : {})
+      },
+      include: {
+        actorUser: {
+          select: { id: true, firstName: true, lastName: true, email: true }
+        }
+      },
+      orderBy: { createdAt: 'asc' }
+    });
+  }
 
   async listTimeline(dealershipId: string, leadId: string, limit = 5, cursor?: string) {
     await this.ensureLeadExists(dealershipId, leadId);

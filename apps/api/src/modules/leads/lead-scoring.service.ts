@@ -12,6 +12,14 @@ type NumericScoreBreakdown = {
   total: number;
 };
 
+type LeadScoreResponse = {
+  leadId: string;
+  score: number;
+  breakdown: NumericScoreBreakdown;
+  reasons: string[];
+  updatedAt: string;
+};
+
 const LEAD_STAGE_SCORES: Record<string, number> = {
   NEW: 0,
   CONTACTED: 5,
@@ -213,5 +221,53 @@ export class LeadScoringService {
       },
       select: { id: true, leadScore: true, leadScoreUpdatedAt: true }
     });
+  }
+
+  async calculateLeadScore(leadId: string, dealershipId: string): Promise<LeadScoreResponse> {
+    const { score, breakdown } = await this.computeScore(leadId, dealershipId);
+    const persisted = await (this.prisma as any).lead.update({
+      where: { id: leadId },
+      data: {
+        leadScore: score,
+        leadScoreUpdatedAt: new Date()
+      },
+      select: { id: true, leadScoreUpdatedAt: true }
+    });
+
+    return {
+      leadId,
+      score,
+      breakdown,
+      reasons: this.buildReasons(breakdown),
+      updatedAt: persisted.leadScoreUpdatedAt.toISOString()
+    };
+  }
+
+  private buildReasons(breakdown: NumericScoreBreakdown): string[] {
+    const reasons: string[] = [];
+
+    if (breakdown.contactability > 0) {
+      reasons.push(`+${breakdown.contactability} contactability signals present`);
+    }
+    if (breakdown.engagement > 0) {
+      reasons.push(`+${breakdown.engagement} engagement from outreach and replies`);
+    }
+    if (breakdown.appointment > 0) {
+      reasons.push(`+${breakdown.appointment} appointment progress`);
+    }
+    if (breakdown.stage > 0) {
+      reasons.push(`+${breakdown.stage} pipeline stage weighting`);
+    }
+    if (breakdown.freshness > 0) {
+      reasons.push(`+${breakdown.freshness} recent activity freshness`);
+    } else if (breakdown.freshness < 0) {
+      reasons.push(`${breakdown.freshness} stale lead activity penalty`);
+    }
+    if (breakdown.penalty < 0) {
+      reasons.push(`${breakdown.penalty} no-show penalty`);
+    }
+
+    reasons.push(`Total score: ${breakdown.total}/100`);
+    return reasons;
   }
 }
