@@ -45,7 +45,8 @@ export class TenantGuard implements CanActivate {
     const membership = await this.prisma.userDealershipRole.findFirst({
       where: {
         userId: user.userId,
-        dealershipId
+        dealershipId,
+        isActive: true
       }
     });
 

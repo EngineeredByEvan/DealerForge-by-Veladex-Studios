@@ -17,19 +17,21 @@ async function main(): Promise<void> {
 
   const dealership = await prisma.dealership.upsert({
     where: { id: 'woodstock-mazda' },
-    update: { name: 'Woodstock Mazda', autoGroupId: autoGroup.id },
+    update: { name: 'Woodstock Mazda', autoGroupId: autoGroup.id, slug: 'woodstock-mazda', timezone: 'America/Toronto' },
     create: {
       id: 'woodstock-mazda',
       name: 'Woodstock Mazda',
+      slug: 'woodstock-mazda',
+      timezone: 'America/Toronto',
       autoGroupId: autoGroup.id
     }
   });
 
   const users = [
-    { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN },
-    { email: 'manager@dealerforge.local', firstName: 'Manny', lastName: 'Manager', role: Role.MANAGER },
-    { email: 'sales1@dealerforge.local', firstName: 'Sally', lastName: 'Sales', role: Role.SALES },
-    { email: 'sales2@dealerforge.local', firstName: 'Sam', lastName: 'Sales', role: Role.SALES }
+    { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: true },
+    { email: 'manager@dealerforge.local', firstName: 'Manny', lastName: 'Manager', role: Role.MANAGER, isPlatformAdmin: false },
+    { email: 'sales1@dealerforge.local', firstName: 'Sally', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false },
+    { email: 'sales2@dealerforge.local', firstName: 'Sam', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false }
   ];
 
   for (const userInput of users) {
@@ -38,13 +40,15 @@ async function main(): Promise<void> {
       update: {
         firstName: userInput.firstName,
         lastName: userInput.lastName,
-        passwordHash
+        passwordHash,
+        isPlatformAdmin: userInput.isPlatformAdmin
       },
       create: {
         email: userInput.email,
         firstName: userInput.firstName,
         lastName: userInput.lastName,
-        passwordHash
+        passwordHash,
+        isPlatformAdmin: userInput.isPlatformAdmin
       }
     });
 

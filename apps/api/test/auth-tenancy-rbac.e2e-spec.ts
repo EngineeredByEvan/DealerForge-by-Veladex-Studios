@@ -10,6 +10,7 @@ type Membership = {
   userId: string;
   dealershipId: string;
   role: Role;
+  isActive?: boolean;
 };
 
 describe('Auth + tenancy + RBAC (e2e)', () => {
@@ -23,7 +24,8 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
         passwordHash: bcrypt.hashSync('Password123!', 10),
         refreshTokenHash: null as string | null,
         firstName: 'Admin',
-        lastName: 'User'
+        lastName: 'User',
+        isPlatformAdmin: false
       },
       {
         id: 'u-sales',
@@ -31,12 +33,13 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
         passwordHash: bcrypt.hashSync('Password123!', 10),
         refreshTokenHash: null as string | null,
         firstName: 'Sales',
-        lastName: 'User'
+        lastName: 'User',
+        isPlatformAdmin: false
       }
     ],
     memberships: [
-      { userId: 'u-admin', dealershipId: 'd-1', role: Role.ADMIN },
-      { userId: 'u-sales', dealershipId: 'd-1', role: Role.SALES }
+      { userId: 'u-admin', dealershipId: 'd-1', role: Role.ADMIN, isActive: true },
+      { userId: 'u-sales', dealershipId: 'd-1', role: Role.SALES, isActive: true }
     ] as Membership[]
   };
 

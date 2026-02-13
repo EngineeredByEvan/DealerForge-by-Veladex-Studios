@@ -10,6 +10,7 @@ export type AuthMeResponse = {
   email: string;
   firstName: string;
   lastName: string;
+  isPlatformAdmin: boolean;
   dealerships: { dealershipId: string; dealershipName: string; role: string }[];
 };
 
@@ -670,4 +671,118 @@ export async function fetchLeadNextBestAction(leadId: string): Promise<AiNextBes
   }
 
   return (await response.json()) as AiNextBestActionResponse;
+}
+
+
+export type DealershipStatus = 'ACTIVE' | 'INACTIVE';
+
+export type Dealership = {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  status: DealershipStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchDealershipsPlatform(): Promise<Dealership[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships`, {
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }
+  });
+
+  if (!response.ok) throw new Error('Unable to fetch dealerships');
+  return (await response.json()) as Dealership[];
+}
+
+export async function createDealershipPlatform(payload: {
+  name: string;
+  slug: string;
+  timezone: string;
+  status?: DealershipStatus;
+}): Promise<Dealership> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to create dealership');
+  return (await response.json()) as Dealership;
+}
+
+export async function updateDealershipPlatform(dealershipId: string, payload: Partial<{
+  name: string;
+  slug: string;
+  timezone: string;
+  status: DealershipStatus;
+}>): Promise<Dealership> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships/${dealershipId}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to update dealership');
+  return (await response.json()) as Dealership;
+}
+
+export type TeamMembership = {
+  id: string;
+  userId: string;
+  dealershipId: string;
+  role: 'ADMIN' | 'MANAGER' | 'BDC' | 'SALES';
+  isActive: boolean;
+  user: { id: string; email: string; firstName: string; lastName: string };
+};
+
+export async function fetchTeamUsers(): Promise<TeamMembership[]> {
+  const response = await apiRequest('/team/users');
+  if (!response.ok) throw new Error('Unable to fetch team users');
+  return (await response.json()) as TeamMembership[];
+}
+
+export async function inviteTeamUser(payload: { email: string; role: TeamMembership['role'] }) {
+  const response = await apiRequest('/team/invitations', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to invite user');
+  return (await response.json()) as { token: string; status: string };
+}
+
+export async function setTeamUserRole(userId: string, role: TeamMembership['role']): Promise<void> {
+  const response = await apiRequest(`/team/users/${userId}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role })
+  });
+
+  if (!response.ok) throw new Error('Unable to set role');
+}
+
+export async function deactivateTeamUser(userId: string): Promise<void> {
+  const response = await apiRequest(`/team/users/${userId}/deactivate`, { method: 'POST' });
+  if (!response.ok) throw new Error('Unable to deactivate user');
+}
+
+export async function acceptInvitation(payload: {
+  token: string;
+  password: string;
+  firstName?: string;
+  lastName?: string;
+}): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/team/invitations/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to accept invitation');
 }
