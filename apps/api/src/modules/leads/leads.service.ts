@@ -184,10 +184,19 @@ export class LeadsService {
   async listLeadMessages(dealershipId: string, leadId: string, channel?: MessageChannel) {
     await this.ensureLeadExists(dealershipId, leadId);
 
+    const thread = await (this.prisma as any).conversationThread.findUnique({
+      where: { dealershipId_leadId: { dealershipId, leadId } },
+      select: { id: true }
+    });
+
+    if (!thread) {
+      return [];
+    }
+
     return this.prisma.message.findMany({
       where: {
         dealershipId,
-        thread: { leadId, dealershipId },
+        threadId: thread.id,
         ...(channel ? { channel } : {})
       },
       include: {

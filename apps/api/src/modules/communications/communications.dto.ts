@@ -155,3 +155,17 @@ export class BulkSendDto {
   @IsNotEmpty()
   templateId!: string;
 }
+
+export class RenderTemplateDto {
+  @IsString()
+  @IsNotEmpty()
+  templateBody!: string;
+
+  @IsOptional()
+  @IsString()
+  templateSubject?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  leadId!: string;
+}

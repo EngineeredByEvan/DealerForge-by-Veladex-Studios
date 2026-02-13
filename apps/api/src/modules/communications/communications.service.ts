@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { MessageChannel, MessageDirection, MessageStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -12,9 +12,10 @@ import {
   TELEPHONY_PROVIDER_TOKEN,
   TelephonyProvider
 } from './providers/telephony-provider.interface';
-import { BulkSendDto, CommunicationChannel, CreateTemplateDto, LogCallDto, SendLeadSmsDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
+import { BulkSendDto, CommunicationChannel, CreateTemplateDto, LogCallDto, RenderTemplateDto, SendLeadSmsDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
 import { LeadScoringService } from '../leads/lead-scoring.service';
 import { LeadsService } from '../leads/leads.service';
+import { findMissingMergeFields, MergeContext, renderTemplate } from '../../common/templates/mergeFields';
 
 const MESSAGE_INCLUDE = {
   actorUser: {
@@ -29,6 +30,7 @@ const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
 @Injectable()
 export class CommunicationsService {
+  private readonly logger = new Logger(CommunicationsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
@@ -79,11 +81,14 @@ export class CommunicationsService {
   }
 
   async sendLeadSms(dealershipId: string, leadId: string, actorUserId: string, payload: SendLeadSmsDto) {
-    const thread = await this.createOrGetThread(dealershipId, leadId);
     const lead = await this.ensureLeadExists(dealershipId, leadId);
+    const thread = await this.createOrGetThread(dealershipId, leadId);
     const toPhone = payload.toPhone ?? lead.phone;
     if (!toPhone) throw new BadRequestException('Lead is missing phone number for SMS');
     if (!E164_REGEX.test(toPhone)) throw new BadRequestException('SMS toPhone must be E.164 format');
+
+    const templateContext = await this.buildMergeContext(dealershipId, leadId, actorUserId);
+    const renderedBody = renderTemplate(payload.body, templateContext);
 
     const message = await (this.prisma as any).message.create({
       data: {
@@ -91,7 +96,7 @@ export class CommunicationsService {
         threadId: thread.id,
         channel: CommunicationChannel.SMS,
         direction: payload.direction ?? MessageDirection.OUTBOUND,
-        body: payload.body,
+        body: renderedBody,
         status: MessageStatus.QUEUED,
         actorUserId,
         provider: process.env.COMMUNICATIONS_MODE === 'twilio' ? 'twilio' : 'mock',
@@ -100,7 +105,9 @@ export class CommunicationsService {
       include: MESSAGE_INCLUDE
     });
 
-    const result = await this.smsProvider.send({ dealershipId, to: toPhone, body: payload.body });
+    this.logger.log(`Saved Message ${message.id} thread=${thread.id} dealership=${dealershipId} lead=${leadId} actor=${actorUserId} bodyLen=${renderedBody.length}`);
+
+    const result = await this.smsProvider.send({ dealershipId, to: toPhone, body: renderedBody });
 
     const updated = await (this.prisma as any).message.update({
       where: { id: message.id },
@@ -236,11 +243,17 @@ export class CommunicationsService {
 
     if (direction === MessageDirection.OUTBOUND && payload.channel === CommunicationChannel.SMS) {
       if (!lead.phone) throw new BadRequestException('Lead is missing phone number for SMS');
+      const templateContext = await this.buildMergeContext(dealershipId, leadId, actorUserId);
+      payload.body = renderTemplate(payload.body, templateContext);
       providerMessageId = (await this.smsProvider.send({ dealershipId, to: lead.phone, body: payload.body })).providerMessageId;
     }
 
     if (direction === MessageDirection.OUTBOUND && payload.channel === CommunicationChannel.EMAIL) {
       if (!lead.email) throw new BadRequestException('Lead is missing email for EMAIL');
+      const templateContext = await this.buildMergeContext(dealershipId, leadId, actorUserId);
+      payload.body = renderTemplate(payload.body, templateContext);
+      const renderedSubject = renderTemplate(payload.subject ?? '', templateContext);
+      payload.subject = renderedSubject || undefined;
       providerMessageId = (await this.emailProvider.send({ to: lead.email, subject: payload.subject, body: payload.body })).providerMessageId;
     }
 
@@ -258,6 +271,8 @@ export class CommunicationsService {
       },
       include: MESSAGE_INCLUDE
     });
+
+    this.logger.log(`Saved Message ${message.id} thread=${thread.id} dealership=${dealershipId} lead=${leadId} actor=${actorUserId} bodyLen=${message.body.length}`);
 
     await this.eventLogService.emit({
       dealershipId,
@@ -391,7 +406,13 @@ export class CommunicationsService {
 
     let accepted = 0;
     for (const lead of leads) {
-      const body = this.renderTemplate(template.body, lead);
+      const body = renderTemplate(template.body, {
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        email: lead.email,
+        phone: lead.phone,
+        vehicleInterest: lead.vehicleInterest
+      });
       if (channel === 'SMS') {
         if (!lead.phone) continue;
         await this.sendLeadSms(dealershipId, lead.id, actorUserId, { body });
@@ -399,7 +420,13 @@ export class CommunicationsService {
         await this.sendMessage(dealershipId, lead.id, actorUserId, {
           channel: CommunicationChannel.EMAIL,
           body,
-          subject: this.renderTemplate(template.subject ?? '', lead),
+          subject: renderTemplate(template.subject ?? '', {
+            firstName: lead.firstName,
+            lastName: lead.lastName,
+            email: lead.email,
+            phone: lead.phone,
+            vehicleInterest: lead.vehicleInterest
+          }),
           direction: MessageDirection.OUTBOUND
         });
       }
@@ -409,17 +436,65 @@ export class CommunicationsService {
     return { accepted, totalRequested: payload.leadIds.length };
   }
 
-  private renderTemplate(templateString: string, lead: Prisma.LeadUncheckedCreateInput | any) {
-    const values: Record<string, string> = {
-      firstName: lead.firstName ?? '',
-      lastName: lead.lastName ?? '',
-      vehicle: lead.vehicleInterest ?? '',
-      dealershipName: '',
-      salespersonName: ''
-    };
 
-    return templateString.replace(/{{\s*(\w+)\s*}}/g, (_m, key: string) => values[key] ?? '');
+  async renderTemplatePreview(dealershipId: string, actorUserId: string, payload: RenderTemplateDto) {
+    const ctx = await this.buildMergeContext(dealershipId, payload.leadId, actorUserId);
+
+    return {
+      renderedBody: renderTemplate(payload.templateBody, ctx),
+      renderedSubject: payload.templateSubject ? renderTemplate(payload.templateSubject, ctx) : '',
+      missingFields: findMissingMergeFields(`${payload.templateSubject ?? ''} ${payload.templateBody}`.trim(), ctx)
+    };
   }
+
+  async listRecentLeadMessages(dealershipId: string, leadId: string, limit = 20) {
+    const thread = await (this.prisma as any).conversationThread.findUnique({
+      where: { dealershipId_leadId: { dealershipId, leadId } },
+      select: { id: true }
+    });
+
+    if (!thread) return [];
+
+    return (this.prisma as any).message.findMany({
+      where: { dealershipId, threadId: thread.id },
+      orderBy: { createdAt: 'desc' },
+      take: Math.max(1, Math.min(limit, 100))
+    });
+  }
+
+  private async buildMergeContext(dealershipId: string, leadId: string, actorUserId: string): Promise<MergeContext> {
+    const [lead, dealership, actorUser] = await Promise.all([
+      this.ensureLeadExists(dealershipId, leadId),
+      this.prisma.dealership.findFirst({ where: { id: dealershipId }, select: { name: true } }),
+      this.prisma.user.findUnique({ where: { id: actorUserId }, select: { firstName: true, lastName: true } })
+    ]);
+
+    if (lead.dealershipId !== dealershipId) {
+      throw new ForbiddenException('Lead does not belong to dealership tenant');
+    }
+
+    let salespersonName = '';
+    if (lead.assignedToUserId) {
+      const assigned = await this.prisma.user.findUnique({
+        where: { id: lead.assignedToUserId },
+        select: { firstName: true, lastName: true }
+      });
+      salespersonName = `${assigned?.firstName ?? ''} ${assigned?.lastName ?? ''}`.trim();
+    }
+
+    return {
+      firstName: lead.firstName ?? 'there',
+      lastName: lead.lastName ?? '',
+      fullName: `${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim(),
+      email: lead.email ?? '',
+      phone: lead.phone ?? '',
+      vehicleInterest: lead.vehicleInterest ?? '',
+      dealershipName: dealership?.name ?? '',
+      salespersonName: salespersonName || `${actorUser?.firstName ?? ''} ${actorUser?.lastName ?? ''}`.trim(),
+      unsubscribeText: 'Reply STOP to unsubscribe'
+    };
+  }
+
   async deleteTemplate(dealershipId: string, templateId: string) {
     await this.ensureTemplate(dealershipId, templateId);
     await (this.prisma as any).communicationTemplate.delete({ where: { id: templateId } });
@@ -447,3 +522,4 @@ export class CommunicationsService {
     if (!template) throw new NotFoundException('Template not found');
   }
 }
+

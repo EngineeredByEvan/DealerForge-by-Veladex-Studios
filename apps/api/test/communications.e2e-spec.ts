@@ -21,9 +21,9 @@ describe('Communications endpoints (e2e)', () => {
       }
     ],
     memberships: [{ userId: 'u-admin', dealershipId: 'd-1', role: 'ADMIN' }],
-    dealerships: [{ id: 'd-1', twilioFromPhone: '+15550009999', twilioMessagingServiceSid: 'MG123' }],
+    dealerships: [{ id: 'd-1', name: 'Woodstock Mazda', twilioFromPhone: '+15550009999', twilioMessagingServiceSid: 'MG123' }],
     leads: [
-      { id: 'lead-1', dealershipId: 'd-1', phone: '+15550001111', email: 'lead@example.com', status: 'NEW', lastActivityAt: null as Date | null, firstName: 'Lead', lastName: 'One', vehicleInterest: null, sourceId: null, soldAt: null, leadScore: 0, leadScoreUpdatedAt: new Date(), assignedToUserId: null }
+      { id: 'lead-1', dealershipId: 'd-1', phone: '+15550001111', email: 'lead@example.com', status: 'NEW', lastActivityAt: null as Date | null, firstName: 'Evan', lastName: 'White', vehicleInterest: 'Porsche 911 Turbo S', sourceId: null, soldAt: null, leadScore: 0, leadScoreUpdatedAt: new Date(), assignedToUserId: null }
     ],
     threads: [] as Array<{ id: string; dealershipId: string; leadId: string; createdAt: Date }>,
     messages: [] as Array<any>,
@@ -201,6 +201,30 @@ describe('Communications endpoints (e2e)', () => {
     expect(response.body.message.status).toBe('SENT');
     expect(response.body.lead.leadScore).toBeGreaterThan(0);
     expect(state.eventLogs.some((event) => event.eventType === 'sms_sent')).toBe(true);
+  });
+
+
+  it('renders merge fields and stores rendered SMS body', async () => {
+    const token = await loginAsAdmin();
+
+    const preview = await request(app.getHttpServer())
+      .post('/api/v1/communications/templates/render')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({ templateBody: 'Hi {firstName}, is the {vehicleInterest} still the one you want?', leadId: 'lead-1' })
+      .expect(201);
+
+    expect(preview.body.renderedBody).toBe('Hi Evan, is the Porsche 911 Turbo S still the one you want?');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/communications/leads/lead-1/messages/sms')
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({ body: 'Hi {firstName}, about {vehicleInterest}' })
+      .expect(201);
+
+    const latest = state.messages[state.messages.length - 1];
+    expect(latest.body).toBe('Hi Evan, about Porsche 911 Turbo S');
   });
 
   it('wrong dealership cannot send SMS for lead not in tenant', async () => {

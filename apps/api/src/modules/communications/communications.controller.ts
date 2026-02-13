@@ -10,7 +10,8 @@ import {
   LogCallDto,
   SendLeadSmsDto,
   SendMessageDto,
-  UpdateTemplateDto
+  UpdateTemplateDto,
+  RenderTemplateDto
 } from './communications.dto';
 import { CommunicationsService } from './communications.service';
 
@@ -87,6 +88,22 @@ export class CommunicationsController {
     return this.communicationsService.updateTemplate(req.tenant!.dealershipId, templateId, payload);
   }
 
+
+
+
+  @Get('leads/:leadId/messages/recent')
+  listRecentLeadMessages(
+    @Req() req: TenantRequest,
+    @Param('leadId') leadId: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.communicationsService.listRecentLeadMessages(req.tenant!.dealershipId, leadId, limit ? Number(limit) : 20);
+  }
+
+  @Post('templates/render')
+  renderTemplate(@Req() req: TenantRequest, @Body() payload: RenderTemplateDto) {
+    return this.communicationsService.renderTemplatePreview(req.tenant!.dealershipId, req.user!.userId, payload);
+  }
 
   @Post('bulk/email')
   bulkEmail(@Req() req: TenantRequest, @Body() payload: BulkSendDto) {

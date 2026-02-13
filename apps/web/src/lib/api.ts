@@ -417,9 +417,27 @@ export async function createOrGetThread(leadId: string): Promise<ConversationThr
 
 export async function fetchMessagesByLead(leadId: string, channel?: MessageChannel): Promise<Message[]> {
   const query = channel ? `?channel=${encodeURIComponent(channel)}` : '';
-  const response = await apiRequest(`/leads/${leadId}/messages${query}`);
+  const response = await apiRequest(`/leads/${leadId}/messages${query}`, { cache: 'no-store' });
   if (!response.ok) throw new Error('Unable to fetch messages');
   return (await response.json()) as Message[];
+}
+
+
+
+export type RenderTemplateResponse = {
+  renderedBody: string;
+  renderedSubject: string;
+  missingFields: string[];
+};
+
+export async function renderTemplatePreview(payload: { templateBody: string; templateSubject?: string; leadId: string }): Promise<RenderTemplateResponse> {
+  const response = await apiRequest('/communications/templates/render', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to render template preview');
+  return (await response.json()) as RenderTemplateResponse;
 }
 
 export async function sendSmsMessage(
