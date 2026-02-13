@@ -59,9 +59,14 @@ export class LogCallDto {
   @IsString()
   body?: string;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
-  durationSec!: number;
+  durationSec?: number;
+
+  @IsOptional()
+  @IsEnum(CommunicationDirection)
+  direction?: CommunicationDirection;
 
   @IsString()
   @IsNotEmpty()

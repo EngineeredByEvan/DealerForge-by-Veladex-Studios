@@ -14,6 +14,8 @@ import {
   Appointment,
   CommunicationTemplate,
   Lead,
+  LeadStatus,
+  LeadType,
   Message,
   Task,
   createAppointment,
@@ -29,10 +31,9 @@ import {
   sendMessage,
   sendSmsMessage,
   assignLead,
-  fetchLeadMeta,
   fetchLeadTimeline,
+  fetchLeadsOptions,
   fetchMe,
-  fetchTeamUsers,
   updateLead,
   updateLeadStatus
 } from '@/lib/api';
@@ -96,7 +97,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [composeSubject, setComposeSubject] = useState('');
   const [composeSubmitting, setComposeSubmitting] = useState(false);
 
-  const [callDurationSec, setCallDurationSec] = useState(300);
+  const [callDirection, setCallDirection] = useState<'INBOUND' | 'OUTBOUND'>('OUTBOUND');
+  const [callDurationSec, setCallDurationSec] = useState<number | ''>('');
   const [callOutcome, setCallOutcome] = useState('Connected');
   const [callNotes, setCallNotes] = useState('');
   const [callSubmitting, setCallSubmitting] = useState(false);
@@ -113,15 +115,14 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     async function load(): Promise<void> {
       setLoading(true);
       try {
-        const [leadResult, activityResult, messageResult, taskResult, appointmentResult, templateResult, metaResult, teamResult, meResult, timelineResult] = await Promise.all([
+        const [leadResult, activityResult, messageResult, taskResult, appointmentResult, templateResult, optionsResult, meResult, timelineResult] = await Promise.all([
           fetchLeadById(params.id),
           fetchLeadActivities(params.id),
           fetchMessagesByLead(params.id),
           fetchTasks({ leadId: params.id }),
           fetchAppointments(),
           fetchTemplates(),
-          fetchLeadMeta(),
-          fetchTeamUsers(),
+          fetchLeadsOptions(),
           fetchMe(),
           fetchLeadTimeline(params.id, 5)
         ]);
@@ -132,6 +133,12 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         setTasks(taskResult);
         setAppointments(appointmentResult.filter((appointment) => appointment.lead_id === params.id));
         setTemplates(templateResult);
+        setStatuses(optionsResult.statuses);
+        setLeadTypes(optionsResult.leadTypes);
+        setTeamUsers(optionsResult.assignableUsers.map((user) => ({ id: user.id, name: `${user.firstName} ${user.lastName}`.trim() || user.email, role: user.role })));
+        setMyRole(meResult.dealerships.find((d) => d.dealershipId === leadResult.dealershipId)?.role ?? '');
+        setTimelineServerItems(timelineResult.items);
+        setTimelineCursor(timelineResult.nextCursor);
         setError(null);
       } catch {
         setError('Unable to load lead details');
@@ -244,12 +251,14 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       setCallSubmitting(true);
       setError(null);
       const created = await logCall(params.id, {
-        durationSec: callDurationSec,
+        direction: callDirection,
+        durationSec: callDurationSec === "" ? undefined : Number(callDurationSec),
         outcome: callOutcome,
         body: callNotes
       });
       setMessages((previous) => [created, ...previous]);
       setCallNotes('');
+      setCallDurationSec('');
       push('Call logged');
     } catch {
       setError('Unable to log call');
@@ -451,9 +460,21 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
 
               <form onSubmit={handleCallLogSubmit} className="lead-form-stack">
                 <strong>Log call</strong>
-                <Input type="number" min={0} value={callDurationSec} onChange={(event) => setCallDurationSec(Number(event.target.value))} placeholder="Duration seconds" />
-                <Input value={callOutcome} onChange={(event) => setCallOutcome(event.target.value)} placeholder="Outcome" />
-                <Textarea value={callNotes} onChange={(event) => setCallNotes(event.target.value)} rows={3} placeholder="Call notes" />
+                <Input value={lead.phone ?? ''} readOnly placeholder="Lead phone" />
+                <Select value={callDirection} onChange={(event) => setCallDirection(event.target.value as 'INBOUND' | 'OUTBOUND')}>
+                  <option value="INBOUND">Inbound</option>
+                  <option value="OUTBOUND">Outbound</option>
+                </Select>
+                <Select value={callOutcome} onChange={(event) => setCallOutcome(event.target.value)}>
+                  <option value="Connected">Connected</option>
+                  <option value="Left VM">Left VM</option>
+                  <option value="No answer">No answer</option>
+                  <option value="Wrong number">Wrong number</option>
+                  <option value="Follow-up needed">Follow-up needed</option>
+                  <option value="Other">Other</option>
+                </Select>
+                <Input type="number" min={0} value={callDurationSec} onChange={(event) => setCallDurationSec(event.target.value === '' ? '' : Number(event.target.value))} placeholder="Duration (seconds)" />
+                <Textarea value={callNotes} onChange={(event) => setCallNotes(event.target.value)} rows={3} placeholder="Notes" />
                 <Button type="submit" disabled={callSubmitting}>{callSubmitting ? 'Logging...' : 'Log call'}</Button>
               </form>
 
@@ -479,11 +500,11 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
             <h2 className="section-title">Lead summary</h2>
             <div className="lead-summary-list">
               <p><strong>Status:</strong></p>
-              <Select value={lead.status} onChange={async (event) => { const updated = await updateLeadStatus(lead.id, event.target.value as any); setLead(updated); }}>
+              <Select value={lead.status} onChange={async (event) => { const updated = await updateLeadStatus(lead.id, event.target.value as LeadStatus); setLead(updated); }}>
                 {statuses.map((item) => <option key={item} value={item}>{item}</option>)}
               </Select>
               <p><strong>Lead Type:</strong></p>
-              <Select value={lead.leadType ?? 'GENERAL'} onChange={async (event) => { const updated = await updateLead(lead.id, { leadType: event.target.value as any }); setLead(updated); }}>
+              <Select value={lead.leadType ?? 'GENERAL'} onChange={async (event) => { const updated = await updateLead(lead.id, { leadType: event.target.value as LeadType }); setLead(updated); }}>
                 {leadTypes.map((item) => <option key={item} value={item}>{item}</option>)}
               </Select>
               <p><strong>Salesperson:</strong></p>

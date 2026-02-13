@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { DataTableShell } from '@/components/layout/data-table';
 import { FormField } from '@/components/layout/form-field';
@@ -22,6 +23,20 @@ import {
 } from '@/lib/api';
 
 const STATUS_OPTIONS: TaskStatus[] = ['OPEN', 'DONE', 'SNOOZED', 'CANCELED'];
+
+function formatLeadLabel(task: Task): string {
+  if (!task.lead) {
+    return 'Unknown lead';
+  }
+
+  const fullName = `${task.lead.firstName ?? ''} ${task.lead.lastName ?? ''}`.trim();
+  if (fullName) {
+    return fullName;
+  }
+
+  return `Lead #${task.lead.id.slice(-6)}`;
+}
+
 
 export default function TasksPage(): JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -101,7 +116,7 @@ export default function TasksPage(): JSX.Element {
       {error ? <p className="error">{error}</p> : null}
 
       <SectionCard title="Create Task">
-        <form onSubmit={(event) => void handleCreate(event)} className="form-grid">
+        <form onSubmit={(event) => void handleCreate(event)} className="form-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 14 }}>
           <FormField label="Title" htmlFor="title" description="A concise action-focused task name" error={!title.trim() && error ? 'Title required' : null}>
             <Input id="title" value={title} onChange={(event) => setTitle(event.target.value)} required />
           </FormField>
@@ -158,7 +173,7 @@ export default function TasksPage(): JSX.Element {
                   <td>{task.title}</td>
                   <td><Badge>{task.status}</Badge></td>
                   <td>{task.dueAt ? new Date(task.dueAt).toLocaleString() : '—'}</td>
-                  <td>{task.leadId ?? '—'}</td>
+                  <td>{task.lead ? <Link href={`/leads/${task.lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{formatLeadLabel(task)}</Link> : 'Unknown lead'}</td>
                   <td style={{ display: 'flex', gap: 8 }}>
                     <Button type="button" variant="secondary" disabled={task.status === 'DONE'} onClick={() => void handleComplete(task.id)}>
                       Complete

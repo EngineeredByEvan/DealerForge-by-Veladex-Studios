@@ -32,7 +32,11 @@ export type LeadType =
   | 'SERVICE'
   | 'FINANCE'
   | 'GENERAL'
-  | 'TRADE_IN';
+  | 'TRADE_IN'
+  | 'PHONE_UP'
+  | 'WALK_IN'
+  | 'INTERNET'
+  | 'OTHER';
 
 export type LeadStatus =
   | 'NEW'
@@ -77,6 +81,25 @@ export async function fetchLeadMeta(): Promise<LeadsMeta> {
   return (await response.json()) as LeadsMeta;
 }
 
+
+
+export type LeadsOptions = {
+  statuses: LeadStatus[];
+  leadTypes: LeadType[];
+  assignableUsers: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: 'ADMIN' | 'MANAGER' | 'BDC' | 'SALES';
+  }>;
+};
+
+export async function fetchLeadsOptions(): Promise<LeadsOptions> {
+  const response = await apiRequest('/leads/options');
+  if (!response.ok) throw new Error('Unable to fetch lead options');
+  return (await response.json()) as LeadsOptions;
+}
 
 export type ActivityType = 'CALL' | 'EMAIL' | 'SMS' | 'NOTE' | 'VISIT' | 'TEST_DRIVE' | 'OTHER';
 
@@ -425,7 +448,7 @@ export async function sendMessage(
 
 export async function logCall(
   leadId: string,
-  payload: { durationSec: number; outcome: string; body?: string }
+  payload: { direction?: MessageDirection; durationSec?: number; outcome: string; body?: string }
 ): Promise<Message> {
   const response = await apiRequest(`/communications/leads/${leadId}/calls`, {
     method: 'POST',
@@ -456,6 +479,27 @@ export async function createTemplate(payload: {
   if (!response.ok) throw new Error('Unable to create template');
   return (await response.json()) as CommunicationTemplate;
 }
+
+export async function updateTemplate(templateId: string, payload: Partial<{
+  channel: MessageChannel;
+  name: string;
+  subject?: string;
+  body: string;
+}>): Promise<CommunicationTemplate> {
+  const response = await apiRequest(`/communications/templates/${templateId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to update template');
+  return (await response.json()) as CommunicationTemplate;
+}
+
+export async function deleteTemplate(templateId: string): Promise<void> {
+  const response = await apiRequest(`/communications/templates/${templateId}`, { method: 'DELETE' });
+  if (!response.ok) throw new Error('Unable to delete template');
+}
+
 
 
 export async function bulkSendCommunication(payload: { channel: 'SMS' | 'EMAIL'; leadIds: string[]; templateId: string }) {

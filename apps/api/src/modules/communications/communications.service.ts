@@ -86,7 +86,7 @@ export class CommunicationsService {
         dealershipId,
         threadId: thread.id,
         channel: CommunicationChannel.SMS,
-        direction: CommunicationDirection.OUTBOUND,
+        direction: payload.direction ?? CommunicationDirection.OUTBOUND,
         body: payload.body,
         status: MessageStatus.QUEUED,
         actorUserId,
@@ -282,7 +282,7 @@ export class CommunicationsService {
     const lead = await this.ensureLeadExists(dealershipId, leadId);
     const providerResult = await this.telephonyProvider.logCall({
       to: lead.phone ?? 'unknown',
-      durationSec: payload.durationSec,
+      durationSec: payload.durationSec ?? 0,
       outcome: payload.outcome,
       notes: payload.body
     });
@@ -292,13 +292,13 @@ export class CommunicationsService {
         dealershipId,
         threadId: thread.id,
         channel: CommunicationChannel.CALL,
-        direction: CommunicationDirection.OUTBOUND,
+        direction: payload.direction ?? CommunicationDirection.OUTBOUND,
         body: payload.body ?? payload.outcome,
         status: MessageStatus.SENT,
         sentAt: new Date(),
         actorUserId,
         providerMessageId: providerResult.providerMessageId,
-        callDurationSec: payload.durationSec,
+        callDurationSec: payload.durationSec ?? null,
         callOutcome: payload.outcome
       },
       include: MESSAGE_INCLUDE
@@ -313,7 +313,7 @@ export class CommunicationsService {
       payload: {
         leadId,
         threadId: thread.id,
-        durationSec: payload.durationSec,
+        durationSec: payload.durationSec ?? null,
         outcome: payload.outcome
       }
     });
