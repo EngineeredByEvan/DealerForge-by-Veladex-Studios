@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "test": "node ./test/lead-detail.smoke.mjs",
+    "test": "node ./test/lead-detail.smoke.mjs && node ./test/rbac.smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

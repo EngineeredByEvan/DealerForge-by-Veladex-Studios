@@ -5,13 +5,13 @@ import {
   Headers,
   Param,
   Post,
-  Req
+  Req,
+  UseGuards
 } from '@nestjs/common';
-import { Role } from '@prisma/client';
 import { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
+import { PlatformOrDealershipAdminGuard } from '../../common/guards/platform-or-dealership-admin.guard';
 import { TenantContext } from '../../common/types/request-context';
 import { CreateIntegrationDto, ImportCsvDto, WebhookParamsDto } from './integrations.dto';
 import { IntegrationsService } from './integrations.service';
@@ -23,17 +23,19 @@ export class IntegrationsController {
   constructor(private readonly integrationsService: IntegrationsService) {}
 
   @Post()
-  @Roles(Role.ADMIN)
+  @UseGuards(PlatformOrDealershipAdminGuard)
   create(@Req() req: TenantRequest, @Body() payload: CreateIntegrationDto) {
     return this.integrationsService.createIntegration(req.tenant!.dealershipId, payload);
   }
 
   @Get()
+  @UseGuards(PlatformOrDealershipAdminGuard)
   findAll(@Req() req: TenantRequest) {
     return this.integrationsService.listIntegrations(req.tenant!.dealershipId);
   }
 
   @Post('import/csv')
+  @UseGuards(PlatformOrDealershipAdminGuard)
   importCsv(@Req() req: TenantRequest, @Body() payload: ImportCsvDto) {
     return this.integrationsService.importCsv(
       req.tenant!.dealershipId,

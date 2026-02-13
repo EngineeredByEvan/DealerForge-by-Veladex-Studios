@@ -25,7 +25,8 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
         refreshTokenHash: null as string | null,
         firstName: 'Admin',
         lastName: 'User',
-        isPlatformAdmin: false
+        isPlatformAdmin: false,
+        isPlatformOperator: false
       },
       {
         id: 'u-sales',
@@ -34,7 +35,8 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
         refreshTokenHash: null as string | null,
         firstName: 'Sales',
         lastName: 'User',
-        isPlatformAdmin: false
+        isPlatformAdmin: false,
+        isPlatformOperator: false
       }
     ],
     memberships: [
@@ -132,6 +134,8 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
 
     expect(meRes.body.email).toBe('admin@test.com');
     expect(meRes.body.dealerships).toHaveLength(1);
+    expect(meRes.body.platformRole).toBe('NONE');
+    expect(meRes.body.isPlatformOperator).toBe(false);
   });
 
   it('blocks protected routes without dealership context', async () => {

@@ -23,7 +23,9 @@ describe('Integrations (e2e)', () => {
         passwordHash: bcrypt.hashSync('Password123!', 10),
         refreshTokenHash: null as string | null,
         firstName: 'Admin',
-        lastName: 'User'
+        lastName: 'User',
+        isPlatformAdmin: false,
+        isPlatformOperator: false
       },
       {
         id: 'u-sales',
@@ -31,12 +33,25 @@ describe('Integrations (e2e)', () => {
         passwordHash: bcrypt.hashSync('Password123!', 10),
         refreshTokenHash: null as string | null,
         firstName: 'Sales',
-        lastName: 'User'
+        lastName: 'User',
+        isPlatformAdmin: false,
+        isPlatformOperator: false
+      },
+      {
+        id: 'u-operator',
+        email: 'operator@test.com',
+        passwordHash: bcrypt.hashSync('Password123!', 10),
+        refreshTokenHash: null as string | null,
+        firstName: 'Opal',
+        lastName: 'Operator',
+        isPlatformAdmin: false,
+        isPlatformOperator: true
       }
     ],
     memberships: [
       { userId: 'u-admin', dealershipId: 'd-1', role: Role.ADMIN },
-      { userId: 'u-sales', dealershipId: 'd-1', role: Role.SALES }
+      { userId: 'u-sales', dealershipId: 'd-1', role: Role.SALES },
+      { userId: 'u-operator', dealershipId: 'd-1', role: Role.SALES }
     ] as Membership[],
     integrations: [] as Array<any>,
     events: [] as Array<any>,
@@ -253,6 +268,23 @@ describe('Integrations (e2e)', () => {
         webhookSecret: 'secret-2'
       })
       .expect(403);
+  });
+
+  it('allows platform operator to list and import integrations', async () => {
+    const accessToken = await loginAs('operator@test.com');
+
+    await request(app.getHttpServer())
+      .get('/api/v1/integrations')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/integrations/import/csv')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({ csv: 'firstName,lastName,email\nOp,Erator,op@example.com', source: 'Operator CSV' })
+      .expect(201);
   });
 
   it('imports CSV and creates integration events + leads', async () => {

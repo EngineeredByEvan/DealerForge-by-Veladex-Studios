@@ -22,7 +22,7 @@ export class AuthService {
     }
 
     const accessToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
+      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin, isPlatformOperator: user.isPlatformOperator },
       { secret: process.env.JWT_SECRET, expiresIn: '15m' }
     );
 
@@ -60,7 +60,7 @@ export class AuthService {
     }
 
     const newAccessToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
+      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin, isPlatformOperator: user.isPlatformOperator },
       { secret: process.env.JWT_SECRET, expiresIn: '15m' }
     );
 
@@ -90,6 +90,8 @@ export class AuthService {
     firstName: string;
     lastName: string;
     isPlatformAdmin: boolean;
+    isPlatformOperator: boolean;
+    platformRole: 'NONE' | 'OPERATOR' | 'ADMIN';
     dealerships: { dealershipId: string; dealershipName: string; role: string }[];
   }> {
     const user = await this.prisma.user.findUnique({
@@ -112,12 +114,16 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    const platformRole = user.isPlatformAdmin ? 'ADMIN' : user.isPlatformOperator ? 'OPERATOR' : 'NONE';
+
     return {
       id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       isPlatformAdmin: user.isPlatformAdmin,
+      isPlatformOperator: user.isPlatformOperator,
+      platformRole,
       dealerships: user.dealerships
         .filter((membership) => membership.isActive)
         .map((membership) => ({

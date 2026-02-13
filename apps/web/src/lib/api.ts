@@ -5,12 +5,16 @@ const ACCESS_TOKEN_KEY = 'dealerforge_access_token';
 const REFRESH_TOKEN_KEY = 'dealerforge_refresh_token';
 const DEALERSHIP_ID_KEY = 'dealerforge_dealership_id';
 
+export type PlatformRole = 'NONE' | 'OPERATOR' | 'ADMIN';
+
 export type AuthMeResponse = {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   isPlatformAdmin: boolean;
+  isPlatformOperator: boolean;
+  platformRole: PlatformRole;
   dealerships: { dealershipId: string; dealershipName: string; role: string }[];
 };
 

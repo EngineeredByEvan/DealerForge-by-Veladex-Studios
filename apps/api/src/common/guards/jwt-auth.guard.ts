@@ -33,13 +33,17 @@ export class JwtAuthGuard implements CanActivate {
     const token = authHeader.replace('Bearer ', '');
 
     try {
-      const payload = this.jwtService.verify<{ sub: string; email: string; isPlatformAdmin?: boolean }>(token, {
+      const payload = this.jwtService.verify<{ sub: string; email: string; isPlatformAdmin?: boolean; isPlatformOperator?: boolean }>(token, {
         secret: process.env.JWT_SECRET
       });
+      const isPlatformAdmin = Boolean(payload.isPlatformAdmin);
+      const isPlatformOperator = Boolean(payload.isPlatformOperator);
       request.user = {
         userId: payload.sub,
         email: payload.email,
-        isPlatformAdmin: Boolean(payload.isPlatformAdmin)
+        isPlatformAdmin,
+        isPlatformOperator,
+        platformRole: isPlatformAdmin ? 'ADMIN' : isPlatformOperator ? 'OPERATOR' : 'NONE'
       };
       return true;
     } catch {
