@@ -10,6 +10,7 @@ export enum CommunicationDirection {
   INBOUND = 'INBOUND'
 }
 
+import { MessageDirection } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
@@ -122,6 +123,10 @@ export class SendLeadSmsDto {
   @IsString()
   @IsNotEmpty()
   body!: string;
+
+  @IsOptional()
+  @IsEnum(MessageDirection)
+  direction?: MessageDirection;
 
   @IsOptional()
   @Transform(({ value }) => normalizeOptionalString(value))
