@@ -2,30 +2,37 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DealershipStatus, Prisma, Role } from '@prisma/client';
 import { AuthUser, TenantContext } from '../../common/types/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { CreateDealershipDto, ListDealershipsDto, UpdateDealershipDto, UpdateDealershipSettingsDto } from './dealerships.dto';
+import {
+  CreateDealershipDto,
+  ListDealershipsDto,
+  UpdateDealershipDto,
+  UpdateDealershipSettingsDto
+} from './dealerships.dto';
 
 const DEALERSHIP_INCLUDE = {
-  autoGroup: { select: { id: true, name: true } }
+  dealerGroup: { select: { id: true, name: true } }
 } satisfies Prisma.DealershipInclude;
 
 @Injectable()
 export class DealershipsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(payload: CreateDealershipDto) {
-    const autoGroup = await this.prisma.autoGroup.findFirst({ orderBy: { createdAt: 'asc' } });
-    const autoGroupId = autoGroup
-      ? autoGroup.id
-      : (
-          await this.prisma.autoGroup.create({
-            data: { name: 'Default Auto Group' }
-          })
-        ).id;
+  async create(payload: CreateDealershipDto, user?: AuthUser, tenant?: TenantContext) {
+    this.assertCreateAccess(user, tenant);
+    const dealerGroup = await this.prisma.dealerGroup.upsert({
+      where: {
+        name: payload.dealerGroupName ?? 'Default Dealer Group'
+      },
+      update: {},
+      create: {
+        name: payload.dealerGroupName ?? 'Default Dealer Group'
+      }
+    });
 
     return this.prisma.$transaction(async (tx) => {
       const dealership = await tx.dealership.create({
         data: {
-          autoGroupId,
+          dealerGroupId: dealerGroup.id,
           name: payload.name,
           slug: payload.slug,
           timezone: payload.timezone,
@@ -119,6 +126,17 @@ export class DealershipsService {
       data: { status: DealershipStatus.INACTIVE },
       include: DEALERSHIP_INCLUDE
     });
+  }
+
+
+  private assertCreateAccess(user?: AuthUser, tenant?: TenantContext): void {
+    if (!user || !tenant) {
+      throw new ForbiddenException('Authenticated dealership admin context is required');
+    }
+
+    if (user.platformRole !== 'NONE' || tenant.role !== Role.ADMIN) {
+      throw new ForbiddenException('Only dealership admins are allowed to create dealerships');
+    }
   }
 
   private assertSettingsAccess(dealershipId: string, user: AuthUser, tenant?: TenantContext): void {

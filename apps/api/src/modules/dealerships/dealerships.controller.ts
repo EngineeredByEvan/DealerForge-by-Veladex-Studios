@@ -1,18 +1,21 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { PlatformAdmin } from '../../common/decorators/platform-admin.decorator';
-import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Role } from '@prisma/client';
+import { Request } from 'express';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AuthUser, TenantContext } from '../../common/types/request-context';
 import { CreateDealershipDto, ListDealershipsDto, UpdateDealershipDto } from './dealerships.dto';
 import { DealershipsService } from './dealerships.service';
 
+type RequestWithContext = Request & { user?: AuthUser; tenant?: TenantContext };
+
 @Controller('platform/dealerships')
-@SkipTenant()
-@PlatformAdmin()
 export class DealershipsController {
   constructor(private readonly dealershipsService: DealershipsService) {}
 
   @Post()
-  create(@Body() payload: CreateDealershipDto) {
-    return this.dealershipsService.create(payload);
+  @Roles(Role.ADMIN)
+  create(@Body() payload: CreateDealershipDto, @Req() request: RequestWithContext) {
+    return this.dealershipsService.create(payload, request.user, request.tenant);
   }
 
   @Get()

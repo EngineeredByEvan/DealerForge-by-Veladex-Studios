@@ -89,23 +89,25 @@ enum AiFeature {
   next_best_action
 }
 
-model AutoGroup {
+model DealerGroup {
   id          String       @id @default(cuid())
-  name        String
+  name        String       @unique
   dealerships Dealership[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+
+  @@map("AutoGroup")
 }
 
 model Dealership {
   id          String               @id @default(cuid())
-  autoGroupId String
+  dealerGroupId String             @map("autoGroupId")
   name        String
   slug        String               @unique
   timezone    String               @default("UTC")
   status      DealershipStatus     @default(ACTIVE)
   businessHours Json?
-  autoGroup   AutoGroup            @relation(fields: [autoGroupId], references: [id])
+  dealerGroup DealerGroup          @relation(fields: [dealerGroupId], references: [id])
   leads       Lead[]
   tasks       Task[]
   appointments Appointment[]

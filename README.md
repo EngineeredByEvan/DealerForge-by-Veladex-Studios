@@ -67,6 +67,37 @@ pnpm --filter @dealerforge/api prisma:deploy
    - `sales1@dealerforge.local` (SALES)
    - `sales2@dealerforge.local` (SALES)
 
+   Platform credentials for dealership provisioning:
+
+   - `admin@dealerforge.local` (Platform Admin)
+   - `operator@dealerforge.local` (Platform Operator)
+
+### Reseed with Plaza Auto Group rooftops
+
+Run this from repo root to reset and reseed the API database:
+
+```bash
+pnpm --filter @dealerforge/api prisma migrate reset --force
+```
+
+Then verify the Plaza Auto Group rooftops are present:
+
+```bash
+pnpm --filter @dealerforge/api exec prisma db seed
+pnpm --filter @dealerforge/api exec prisma studio
+```
+
+Plaza Auto Group seeded dealerships (timezone `America/Toronto`, status `ACTIVE`):
+
+- `bolton-kia`
+- `cobourg-kia`
+- `plaza-kia`
+- `orillia-kia`
+- `orillia-volkswagen`
+- `subaru-of-orillia`
+- `hwy-11-ram`
+- `get-auto-finance`
+
 ## Run the monorepo
 
 ### 1) Infrastructure services (Docker Compose)
@@ -142,6 +173,7 @@ Primary strategy: `X-Dealership-Id` request header.
 - Roles are stored in `UserDealershipRole.role` enum (`ADMIN`, `MANAGER`, `SALES`).
 - Use `@Roles(...)` on protected handlers.
 - `RolesGuard` reads active tenant role and enforces role constraints.
+- `POST /api/v1/platform/dealerships` requires a dealership-scoped `ADMIN` role; platform users cannot create dealerships directly.
 
 ## Quality checks
 
