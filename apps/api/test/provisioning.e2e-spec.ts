@@ -2,7 +2,6 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { DealershipStatus, InvitationStatus, Role } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 
@@ -11,20 +10,21 @@ describe('Provisioning flows (e2e)', () => {
 
   const state = {
     users: [
-      { id: 'u-platform', email: 'platform@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Plat', lastName: 'Admin', isPlatformAdmin: true },
-      { id: 'u-dealer-admin', email: 'dealer-admin@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Dealer', lastName: 'Admin', isPlatformAdmin: false },
-      { id: 'u-sales', email: 'sales@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Sales', lastName: 'Rep', isPlatformAdmin: false }
+      { id: 'u-platform', email: 'platform@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Plat', lastName: 'Admin', isPlatformAdmin: true, isPlatformOperator: false },
+      { id: 'u-dealer-admin', email: 'dealer-admin@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Dealer', lastName: 'Admin', isPlatformAdmin: false, isPlatformOperator: false },
+      { id: 'u-sales', email: 'sales@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Sales', lastName: 'Rep', isPlatformAdmin: false, isPlatformOperator: false },
+      { id: 'u-operator', email: 'operator@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Plat', lastName: 'Operator', isPlatformAdmin: false, isPlatformOperator: true }
     ],
     autoGroups: [{ id: 'ag-1', name: 'Default Auto Group', createdAt: new Date() }],
-    dealerships: [{ id: 'd-1', autoGroupId: 'ag-1', name: 'Store One', slug: 'store-one', timezone: 'UTC', status: DealershipStatus.ACTIVE, createdAt: new Date(), updatedAt: new Date() }],
+    dealerships: [{ id: 'd-1', autoGroupId: 'ag-1', name: 'Store One', slug: 'store-one', timezone: 'UTC', status: 'ACTIVE', createdAt: new Date(), updatedAt: new Date() }],
     memberships: [
-      { id: 'm-1', userId: 'u-dealer-admin', dealershipId: 'd-1', role: Role.ADMIN, isActive: true, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'm-2', userId: 'u-sales', dealershipId: 'd-1', role: Role.SALES, isActive: true, createdAt: new Date(), updatedAt: new Date() }
+      { id: 'm-1', userId: 'u-dealer-admin', dealershipId: 'd-1', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+      { id: 'm-2', userId: 'u-sales', dealershipId: 'd-1', role: 'SALES', isActive: true, createdAt: new Date(), updatedAt: new Date() }
     ],
     invitations: [] as Array<any>
   };
 
-  const prismaMock = {
+  const prismaMock: any = {
     user: {
       findUnique: jest.fn(async ({ where, include }: any) => {
         const user = state.users.find((u) => u.id === where?.id || u.email === where?.email);
@@ -85,9 +85,14 @@ describe('Provisioning flows (e2e)', () => {
         return found;
       })
     },
+
+    leadSource: {
+      createMany: jest.fn(async () => ({ count: 3 }))
+    },
+    $transaction: jest.fn(async (operation: any) => operation(prismaMock)),
     invitation: {
       create: jest.fn(async ({ data }: any) => {
-        const inv = { id: `i-${state.invitations.length + 1}`, createdAt: new Date(), updatedAt: new Date(), status: InvitationStatus.PENDING, ...data };
+        const inv = { id: `i-${state.invitations.length + 1}`, createdAt: new Date(), updatedAt: new Date(), status: 'PENDING', ...data };
         state.invitations.push(inv);
         return inv;
       }),
@@ -119,6 +124,16 @@ describe('Provisioning flows (e2e)', () => {
     await app.close();
   });
 
+  it('platform operator can create dealership', async () => {
+    const loginRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'operator@test.com', password: 'Password123!' }).expect(201);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/platform/dealerships')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .send({ name: 'Store Two', slug: 'store-two', timezone: 'America/Toronto' })
+      .expect(201);
+  });
+
   it('platform admin can create dealership', async () => {
     const loginRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'platform@test.com', password: 'Password123!' }).expect(201);
 
@@ -145,14 +160,13 @@ describe('Provisioning flows (e2e)', () => {
       .expect(403);
   });
 
-  it('non-admin forbidden', async () => {
+  it('non-operator is forbidden on platform provisioning endpoint', async () => {
     const loginRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'sales@test.com', password: 'Password123!' }).expect(201);
 
     await request(app.getHttpServer())
-      .post('/api/v1/team/invitations')
+      .post('/api/v1/platform/dealerships')
       .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
-      .set('x-dealership-id', 'd-1')
-      .send({ email: 'new@dealer.com', role: 'SALES' })
+      .send({ name: 'Store Four', slug: 'store-four', timezone: 'UTC' })
       .expect(403);
   });
 });

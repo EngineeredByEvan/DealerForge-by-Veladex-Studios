@@ -70,3 +70,10 @@ export class UpdateDealershipSettingsDto {
   @IsObject()
   businessHours?: Record<string, unknown>;
 }
+
+export class ListDealershipsDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  q?: string;
+}

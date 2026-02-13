@@ -2,7 +2,7 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DealershipStatus, Prisma, Role } from '@prisma/client';
 import { AuthUser, TenantContext } from '../../common/types/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { CreateDealershipDto, UpdateDealershipDto, UpdateDealershipSettingsDto } from './dealerships.dto';
+import { CreateDealershipDto, ListDealershipsDto, UpdateDealershipDto, UpdateDealershipSettingsDto } from './dealerships.dto';
 
 const DEALERSHIP_INCLUDE = {
   autoGroup: { select: { id: true, name: true } }
@@ -22,21 +22,42 @@ export class DealershipsService {
           })
         ).id;
 
-    return this.prisma.dealership.create({
-      data: {
-        autoGroupId,
-        name: payload.name,
-        slug: payload.slug,
-        timezone: payload.timezone,
-        status: payload.status ?? DealershipStatus.ACTIVE,
-        businessHours: payload.businessHours
-      },
-      include: DEALERSHIP_INCLUDE
+    return this.prisma.$transaction(async (tx) => {
+      const dealership = await tx.dealership.create({
+        data: {
+          autoGroupId,
+          name: payload.name,
+          slug: payload.slug,
+          timezone: payload.timezone,
+          status: payload.status ?? DealershipStatus.ACTIVE,
+          businessHours: payload.businessHours
+        },
+        include: DEALERSHIP_INCLUDE
+      });
+
+      await tx.leadSource.createMany({
+        data: [
+          { dealershipId: dealership.id, name: 'Website' },
+          { dealershipId: dealership.id, name: 'Phone' },
+          { dealershipId: dealership.id, name: 'Walk-in' }
+        ],
+        skipDuplicates: true
+      });
+
+      return dealership;
     });
   }
 
-  async list() {
+  async list(query: ListDealershipsDto) {
     return this.prisma.dealership.findMany({
+      where: query.q
+        ? {
+            OR: [
+              { name: { contains: query.q, mode: 'insensitive' } },
+              { slug: { contains: query.q, mode: 'insensitive' } }
+            ]
+          }
+        : undefined,
       include: DEALERSHIP_INCLUDE,
       orderBy: { createdAt: 'desc' }
     });

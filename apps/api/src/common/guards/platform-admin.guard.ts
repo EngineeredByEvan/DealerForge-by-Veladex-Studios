@@ -18,8 +18,8 @@ export class PlatformAdminGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<{ user?: AuthUser }>();
-    if (!request.user?.isPlatformAdmin) {
-      throw new ForbiddenException('Platform admin access is required');
+    if (!request.user || (!request.user.isPlatformAdmin && !request.user.isPlatformOperator)) {
+      throw new ForbiddenException('Platform operator or admin access is required');
     }
 
     return true;

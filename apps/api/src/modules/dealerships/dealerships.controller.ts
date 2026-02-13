@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { PlatformAdmin } from '../../common/decorators/platform-admin.decorator';
 import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
-import { CreateDealershipDto, UpdateDealershipDto } from './dealerships.dto';
+import { CreateDealershipDto, ListDealershipsDto, UpdateDealershipDto } from './dealerships.dto';
 import { DealershipsService } from './dealerships.service';
 
 @Controller('platform/dealerships')
@@ -16,8 +16,8 @@ export class DealershipsController {
   }
 
   @Get()
-  list() {
-    return this.dealershipsService.list();
+  list(@Query() query: ListDealershipsDto) {
+    return this.dealershipsService.list(query);
   }
 
   @Patch(':dealershipId')

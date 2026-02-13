@@ -899,8 +899,9 @@ export async function updateDealershipSettings(
   if (!response.ok) throw new Error('Unable to update dealership settings');
   return (await response.json()) as Dealership;
 }
-export async function fetchDealershipsPlatform(): Promise<Dealership[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships`, {
+export async function fetchDealershipsPlatform(q?: string): Promise<Dealership[]> {
+  const query = q ? `?q=${encodeURIComponent(q)}` : '';
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships${query}`, {
     headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }
   });
 
