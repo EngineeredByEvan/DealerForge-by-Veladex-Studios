@@ -143,6 +143,20 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
       .expect(400);
   });
 
+
+  it('blocks protected routes when user lacks access to provided dealership', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'sales@test.com', password: 'Password123!' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .get('/api/v1/leads')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .set('X-Dealership-Id', 'd-2')
+      .expect(403);
+  });
+
   it('blocks SALES role from ADMIN-only endpoint', async () => {
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')

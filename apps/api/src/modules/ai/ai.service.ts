@@ -1,9 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { toPrismaJson } from '../../common/prisma/prisma-json';
 import { AuditService } from '../audit/audit.service';
-import { redactJson, redactName, redactText } from './ai.safety';
-import { AiChannel, AiFeature, AiLeadContext, AiTone, LeadScoreResult } from './ai.types';
+import { redactJson } from './ai.safety';
+import { AiChannel, AiFeature, AiLeadContext, AiTone } from './ai.types';
+import { AI_PROVIDER_TOKEN, AiProvider } from './providers/ai-provider.interface';
 
 @Injectable()
 export class AiService {
@@ -12,12 +13,13 @@ export class AiService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    @Inject(AI_PROVIDER_TOKEN) private readonly aiProvider: AiProvider
   ) {}
 
   async leadSummary(dealershipId: string, leadId: string) {
     const context = await this.loadLeadContext(dealershipId, leadId);
-    const summary = this.generateSummary(context);
+    const summary = await this.aiProvider.generateSummary(context);
 
     await this.enqueueAiJob('lead_summary', dealershipId, leadId, { leadId });
     await this.logRedacted('lead_summary', dealershipId, leadId, { leadId }, { summary });
@@ -28,7 +30,7 @@ export class AiService {
 
   async leadScore(dealershipId: string, leadId: string) {
     const context = await this.loadLeadContext(dealershipId, leadId);
-    const result = this.generateScore(context);
+    const result = await this.aiProvider.generateScore(context);
 
     await this.enqueueAiJob('lead_score', dealershipId, leadId, { leadId });
     await this.logRedacted('lead_score', dealershipId, leadId, { leadId }, result);
@@ -45,7 +47,7 @@ export class AiService {
     instruction?: string
   ) {
     const context = await this.loadLeadContext(dealershipId, leadId);
-    const draft = this.generateDraft(context, channel, tone, instruction);
+    const draft = await this.aiProvider.generateDraft(context, channel, tone, instruction);
 
     await this.logRedacted(
       'draft_followup',
@@ -61,7 +63,7 @@ export class AiService {
 
   async nextBestAction(dealershipId: string, leadId: string) {
     const context = await this.loadLeadContext(dealershipId, leadId);
-    const action = this.generateNextBestAction(context);
+    const action = await this.aiProvider.generateNextBestAction(context);
 
     await this.enqueueAiJob('next_best_action', dealershipId, leadId, { leadId });
     await this.logRedacted('next_best_action', dealershipId, leadId, { leadId }, action);
@@ -101,102 +103,6 @@ export class AiService {
       source: lead.source,
       activityCount: lead._count.activities,
       latestActivities: lead.activities
-    };
-  }
-
-  private generateSummary(context: AiLeadContext): string {
-    const name = redactName(context.firstName, context.lastName);
-    const interest = context.vehicleInterest ? redactText(context.vehicleInterest) : 'unspecified vehicle';
-    const recentActivity = context.latestActivities[0]
-      ? `${context.latestActivities[0].type}: ${redactText(context.latestActivities[0].subject)}`
-      : 'no recent activities';
-
-    return `${name} is currently ${context.status}. Interested in ${interest}. Latest timeline item: ${recentActivity}. Suggested next step: ${this.generateNextBestAction(context).action}.`;
-  }
-
-  private generateScore(context: AiLeadContext): LeadScoreResult {
-    let score = 30;
-    const reasons: string[] = [];
-
-    if (context.vehicleInterest) {
-      score += 20;
-      reasons.push('Vehicle interest captured');
-    }
-
-    if (context.email || context.phone) {
-      score += 15;
-      reasons.push('Contact method available');
-    }
-
-    if (context.activityCount >= 3) {
-      score += 20;
-      reasons.push('Active conversation history');
-    }
-
-    if (['QUALIFIED', 'APPOINTMENT_SET', 'NEGOTIATING'].includes(context.status)) {
-      score += 25;
-      reasons.push(`Lead status indicates buying intent (${context.status})`);
-    }
-
-    if (context.status === 'LOST') {
-      score = 10;
-      reasons.push('Lead marked as lost');
-    }
-
-    return { score: Math.min(100, score), reasons };
-  }
-
-  private generateDraft(
-    context: AiLeadContext,
-    channel: AiChannel,
-    tone: AiTone,
-    instruction?: string
-  ): { channel: AiChannel; tone: AiTone; message: string } {
-    const greeting = channel === 'SMS' ? 'Hi' : 'Hello';
-    const firstName = context.firstName?.trim() || 'there';
-    const vehicle = context.vehicleInterest ? redactText(context.vehicleInterest) : 'a vehicle you asked about';
-
-    const tonePhrase =
-      tone === 'DIRECT'
-        ? 'Can we lock in a time to connect today?'
-        : tone === 'PROFESSIONAL'
-          ? 'Please let me know a convenient time to continue your purchase planning.'
-          : 'Would you be open to a quick chat today?';
-
-    const customInstruction = instruction ? ` ${redactText(instruction)}` : '';
-
-    return {
-      channel,
-      tone,
-      message: `${greeting} ${firstName}, thanks again for your interest in ${vehicle}. I can share availability and payment options for you.${customInstruction} ${tonePhrase}`
-    };
-  }
-
-  private generateNextBestAction(context: AiLeadContext): { action: string; rationale: string } {
-    if (!context.phone && context.email) {
-      return {
-        action: 'Send email with availability and pricing options',
-        rationale: 'Lead has email but no phone, so email is the best reachable channel.'
-      };
-    }
-
-    if (context.status === 'APPOINTMENT_SET') {
-      return {
-        action: 'Confirm appointment and send reminder',
-        rationale: 'Lead is appointment-set and should be protected from no-show risk.'
-      };
-    }
-
-    if (context.activityCount === 0) {
-      return {
-        action: 'Call now to establish first contact',
-        rationale: 'No activity exists yet, so immediate first-touch outreach is highest leverage.'
-      };
-    }
-
-    return {
-      action: 'Offer payment options and book a dealership visit',
-      rationale: 'Lead has engagement history and should be moved toward an in-person commitment.'
     };
   }
 

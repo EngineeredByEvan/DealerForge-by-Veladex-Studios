@@ -69,10 +69,37 @@ pnpm --filter @dealerforge/api prisma:deploy
 
 ## Run the monorepo
 
-Start all apps with one command:
+### 1) Infrastructure services (Docker Compose)
+
+Start PostgreSQL + Redis first:
+
+```bash
+docker compose up -d
+```
+
+### 2) Install + database bootstrap
+
+```bash
+pnpm install
+pnpm --filter @dealerforge/api prisma:generate
+pnpm --filter @dealerforge/api prisma:migrate -- --name init
+pnpm --filter @dealerforge/api prisma:seed
+```
+
+### 3) Run apps (combined or individually)
+
+Run all apps together:
 
 ```bash
 pnpm dev
+```
+
+Or run each service in separate terminals:
+
+```bash
+pnpm --filter @dealerforge/api dev
+pnpm --filter @dealerforge/web dev
+pnpm --filter @dealerforge/worker dev
 ```
 
 - Web: http://localhost:3000/login
@@ -83,12 +110,12 @@ pnpm dev
 
 Required variables are documented in `.env.example`:
 
-- `DATABASE_URL`
-- `REDIS_URL`
-- `API_PORT`
-- `NEXT_PUBLIC_API_BASE_URL`
-- `JWT_SECRET`
-- `JWT_REFRESH_SECRET`
+- Shared/runtime: `NODE_ENV`
+- Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`, `DATABASE_URL`
+- Redis: `REDIS_PORT`, `REDIS_URL`
+- API: `API_PORT`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `WEB_ORIGIN` (optional, defaults to `http://localhost:3000`)
+- Web: `WEB_PORT`, `NEXT_PUBLIC_API_BASE_URL`
+- Worker: `WORKER_CONCURRENCY`
 
 ## Auth + tenancy + RBAC (Phase 1)
 

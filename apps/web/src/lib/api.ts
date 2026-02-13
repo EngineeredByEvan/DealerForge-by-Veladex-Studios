@@ -131,12 +131,9 @@ export async function login(email: string, password: string): Promise<void> {
 
 
 export async function fetchMe(): Promise<AuthMeResponse> {
-  const dealershipId = getSelectedDealershipId() ?? 'woodstock-mazda';
-
   const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
     headers: {
-      Authorization: `Bearer ${getAccessToken() ?? ''}`,
-      'x-dealership-id': dealershipId, // <-- add this
+      Authorization: `Bearer ${getAccessToken() ?? ''}`
     }
   });
 
