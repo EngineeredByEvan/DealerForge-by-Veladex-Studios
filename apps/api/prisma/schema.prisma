@@ -58,6 +58,14 @@ enum MessageDirection {
   INBOUND
 }
 
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  RECEIVED
+}
+
 enum TaskStatus {
   OPEN
   DONE
@@ -105,6 +113,10 @@ model Dealership {
   timezone    String               @default("UTC")
   status      DealershipStatus     @default(ACTIVE)
   businessHours Json?
+  twilioAccountSid String?
+  twilioAuthToken String?
+  twilioMessagingServiceSid String?
+  twilioFromPhone String?
   autoGroup   AutoGroup            @relation(fields: [autoGroupId], references: [id])
   leads       Lead[]
   tasks       Task[]
@@ -276,10 +288,15 @@ model Message {
   channel           MessageChannel
   direction         MessageDirection
   body              String
-  status            String
+  status            MessageStatus
   sentAt            DateTime?
   actorUserId       String?
+  provider          String?
   providerMessageId String?
+  errorCode         String?
+  errorMessage      String?
+  toPhone           String?
+  fromPhone         String?
   callDurationSec   Int?
   callOutcome       String?
   dealership        Dealership       @relation(fields: [dealershipId], references: [id])

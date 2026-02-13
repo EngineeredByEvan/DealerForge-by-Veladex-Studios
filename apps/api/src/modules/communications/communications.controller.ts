@@ -6,6 +6,7 @@ import {
   CreateTemplateDto,
   ListMessagesQueryDto,
   LogCallDto,
+  SendLeadSmsDto,
   SendMessageDto,
   UpdateTemplateDto
 } from './communications.dto';
@@ -30,6 +31,20 @@ export class CommunicationsController {
   @Get('messages')
   listMessages(@Req() req: TenantRequest, @Query() query: ListMessagesQueryDto) {
     return this.communicationsService.listMessages(req.tenant!.dealershipId, query.leadId, query.threadId);
+  }
+
+  @Post('leads/:leadId/messages/sms')
+  sendSms(
+    @Req() req: TenantRequest,
+    @Param('leadId') leadId: string,
+    @Body() payload: SendLeadSmsDto
+  ) {
+    return this.communicationsService.sendLeadSms(
+      req.tenant!.dealershipId,
+      leadId,
+      req.user!.userId,
+      payload
+    );
   }
 
   @Post('leads/:leadId/send')

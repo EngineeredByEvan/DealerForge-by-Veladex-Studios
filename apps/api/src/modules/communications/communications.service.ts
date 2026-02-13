@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { MessageStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
@@ -12,7 +12,7 @@ import {
   TELEPHONY_PROVIDER_TOKEN,
   TelephonyProvider
 } from './providers/telephony-provider.interface';
-import { CommunicationChannel, CommunicationDirection, CreateTemplateDto, LogCallDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
+import { CommunicationChannel, CommunicationDirection, CreateTemplateDto, LogCallDto, SendLeadSmsDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
 
 const MESSAGE_INCLUDE = {
   actorUser: {
@@ -22,6 +22,8 @@ const MESSAGE_INCLUDE = {
     select: { id: true, leadId: true }
   }
 } satisfies Prisma.MessageInclude;
+
+const E164_REGEX = /^\+[1-9]\d{7,14}$/;
 
 @Injectable()
 export class CommunicationsService {
@@ -72,6 +74,146 @@ export class CommunicationsService {
     });
   }
 
+  async sendLeadSms(dealershipId: string, leadId: string, actorUserId: string, payload: SendLeadSmsDto) {
+    const thread = await this.createOrGetThread(dealershipId, leadId);
+    const lead = await this.ensureLeadExists(dealershipId, leadId);
+    const toPhone = payload.toPhone ?? lead.phone;
+    if (!toPhone) throw new BadRequestException('Lead is missing phone number for SMS');
+    if (!E164_REGEX.test(toPhone)) throw new BadRequestException('SMS toPhone must be E.164 format');
+
+    const message = await (this.prisma as any).message.create({
+      data: {
+        dealershipId,
+        threadId: thread.id,
+        channel: CommunicationChannel.SMS,
+        direction: CommunicationDirection.OUTBOUND,
+        body: payload.body,
+        status: MessageStatus.QUEUED,
+        actorUserId,
+        provider: process.env.COMMUNICATIONS_MODE === 'twilio' ? 'twilio' : 'mock',
+        toPhone
+      },
+      include: MESSAGE_INCLUDE
+    });
+
+    const result = await this.smsProvider.send({ dealershipId, to: toPhone, body: payload.body });
+
+    const updated = await (this.prisma as any).message.update({
+      where: { id: message.id },
+      data: {
+        status: result.status === 'SENT' ? MessageStatus.SENT : MessageStatus.FAILED,
+        sentAt: result.status === 'SENT' ? new Date() : null,
+        providerMessageId: result.providerMessageId,
+        fromPhone: result.fromPhone,
+        errorCode: result.errorCode,
+        errorMessage: result.errorMessage
+      },
+      include: MESSAGE_INCLUDE
+    });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: result.status === 'SENT' ? 'sms_sent' : 'sms_failed',
+      entityType: 'Message',
+      entityId: updated.id,
+      payload: {
+        threadId: thread.id,
+        leadId,
+        channel: updated.channel,
+        direction: updated.direction,
+        providerMessageId: result.providerMessageId
+      }
+    });
+
+    await this.auditService.logEvent({
+      dealershipId,
+      actor: { userId: actorUserId },
+      action: 'sms_sent',
+      entityType: 'Message',
+      entityId: updated.id,
+      metadata: { leadId, threadId: thread.id, channel: updated.channel, direction: updated.direction }
+    });
+
+    await this.prisma.lead.update({ where: { id: leadId }, data: { lastActivityAt: new Date() }, select: { id: true } });
+
+    return updated;
+  }
+
+  async recordInboundSms(input: {
+    dealershipId: string;
+    fromPhone: string;
+    toPhone?: string;
+    providerMessageId?: string;
+    body: string;
+  }) {
+    const lead = await this.prisma.lead.findFirst({ where: { dealershipId: input.dealershipId, phone: input.fromPhone } })
+      ?? await this.prisma.lead.create({
+        data: {
+          dealershipId: input.dealershipId,
+          phone: input.fromPhone,
+          status: 'NEW'
+        }
+      });
+
+    const thread = await this.createOrGetThread(input.dealershipId, lead.id);
+
+    const message = await (this.prisma as any).message.create({
+      data: {
+        dealershipId: input.dealershipId,
+        threadId: thread.id,
+        channel: CommunicationChannel.SMS,
+        direction: CommunicationDirection.INBOUND,
+        body: input.body,
+        status: MessageStatus.RECEIVED,
+        provider: 'twilio',
+        providerMessageId: input.providerMessageId,
+        toPhone: input.toPhone,
+        fromPhone: input.fromPhone,
+        sentAt: new Date()
+      },
+      include: MESSAGE_INCLUDE
+    });
+
+    await this.eventLogService.emit({
+      dealershipId: input.dealershipId,
+      eventType: 'sms_received',
+      entityType: 'Message',
+      entityId: message.id,
+      payload: { leadId: lead.id, threadId: thread.id }
+    });
+
+    return message;
+  }
+
+  async updateMessageStatusByProviderMessageId(providerMessageId: string, providerStatus: string, errorCode?: string, errorMessage?: string) {
+    const normalized = providerStatus.toLowerCase();
+    const status = normalized.includes('deliver') ? MessageStatus.DELIVERED : normalized.includes('fail') || normalized.includes('undeliver') ? MessageStatus.FAILED : MessageStatus.SENT;
+
+    return (this.prisma as any).message.updateMany({
+      where: { providerMessageId },
+      data: {
+        status,
+        errorCode,
+        errorMessage
+      }
+    });
+  }
+
+  findDealershipByTwilioRouting(params: { toPhone?: string; messagingServiceSid?: string }) {
+    const orConditions = [
+      params.messagingServiceSid ? { twilioMessagingServiceSid: params.messagingServiceSid } : undefined,
+      params.toPhone ? { twilioFromPhone: params.toPhone } : undefined
+    ].filter(Boolean) as Prisma.DealershipWhereInput[];
+
+    if (orConditions.length === 0) return null;
+
+    return this.prisma.dealership.findFirst({
+      where: { OR: orConditions },
+      select: { id: true }
+    });
+  }
+
   async sendMessage(dealershipId: string, leadId: string, actorUserId: string, payload: SendMessageDto) {
     const thread = await this.createOrGetThread(dealershipId, leadId);
     const lead = await this.ensureLeadExists(dealershipId, leadId);
@@ -79,11 +221,11 @@ export class CommunicationsService {
 
     let providerMessageId: string | undefined;
     const sentAt = new Date();
-    const status = 'SENT';
+    const status = MessageStatus.SENT;
 
     if (direction === CommunicationDirection.OUTBOUND && payload.channel === CommunicationChannel.SMS) {
       if (!lead.phone) throw new BadRequestException('Lead is missing phone number for SMS');
-      providerMessageId = (await this.smsProvider.send({ to: lead.phone, body: payload.body })).providerMessageId;
+      providerMessageId = (await this.smsProvider.send({ dealershipId, to: lead.phone, body: payload.body })).providerMessageId;
     }
 
     if (direction === CommunicationDirection.OUTBOUND && payload.channel === CommunicationChannel.EMAIL) {
@@ -152,7 +294,7 @@ export class CommunicationsService {
         channel: CommunicationChannel.CALL,
         direction: CommunicationDirection.OUTBOUND,
         body: payload.body ?? payload.outcome,
-        status: 'LOGGED',
+        status: MessageStatus.SENT,
         sentAt: new Date(),
         actorUserId,
         providerMessageId: providerResult.providerMessageId,

@@ -30,7 +30,11 @@ export class DealershipsService {
           slug: payload.slug,
           timezone: payload.timezone,
           status: payload.status ?? DealershipStatus.ACTIVE,
-          businessHours: payload.businessHours
+          businessHours: payload.businessHours,
+          twilioMessagingServiceSid: payload.twilioMessagingServiceSid,
+          twilioFromPhone: payload.twilioFromPhone,
+          twilioAccountSid: payload.twilioAccountSid,
+          twilioAuthToken: payload.twilioAuthToken
         },
         include: DEALERSHIP_INCLUDE
       });
@@ -74,7 +78,7 @@ export class DealershipsService {
   async getSettings(dealershipId: string, user: AuthUser, tenant?: TenantContext) {
     this.assertSettingsAccess(dealershipId, user, tenant);
 
-    return this.prisma.dealership.findUniqueOrThrow({
+    const dealership = await this.prisma.dealership.findUniqueOrThrow({
       where: { id: dealershipId },
       select: {
         id: true,
@@ -83,10 +87,20 @@ export class DealershipsService {
         timezone: true,
         status: true,
         businessHours: true,
+        twilioMessagingServiceSid: true,
+        twilioFromPhone: true,
+        twilioAccountSid: true,
+        twilioAuthToken: true,
         createdAt: true,
         updatedAt: true
       }
     });
+
+    return {
+      ...dealership,
+      twilioAuthToken: undefined,
+      twilioAuthTokenConfigured: Boolean(dealership.twilioAuthToken)
+    };
   }
 
   async updateSettings(
@@ -97,7 +111,7 @@ export class DealershipsService {
   ) {
     this.assertSettingsAccess(dealershipId, user, tenant);
 
-    return this.prisma.dealership.update({
+    const dealership = await this.prisma.dealership.update({
       where: { id: dealershipId },
       data: payload,
       select: {
@@ -107,10 +121,20 @@ export class DealershipsService {
         timezone: true,
         status: true,
         businessHours: true,
+        twilioMessagingServiceSid: true,
+        twilioFromPhone: true,
+        twilioAccountSid: true,
+        twilioAuthToken: true,
         createdAt: true,
         updatedAt: true
       }
     });
+
+    return {
+      ...dealership,
+      twilioAuthToken: undefined,
+      twilioAuthTokenConfigured: Boolean(dealership.twilioAuthToken)
+    };
   }
 
   async deactivate(dealershipId: string) {

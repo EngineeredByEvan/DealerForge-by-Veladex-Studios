@@ -114,6 +114,7 @@ Required variables are documented in `.env.example`:
 - Database: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`, `DATABASE_URL`
 - Redis: `REDIS_PORT`, `REDIS_URL`
 - API: `API_PORT`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, `WEB_ORIGIN` (optional, defaults to `http://localhost:3000`)
+- Communications: `COMMUNICATIONS_MODE` (`mock` by default), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WEBHOOK_AUTH_TOKEN`
 - Web: `WEB_PORT`, `NEXT_PUBLIC_API_BASE_URL`
 - Worker: `WORKER_CONCURRENCY`
 
@@ -215,3 +216,13 @@ For API test infrastructure, the workflow starts PostgreSQL and Redis service co
 - `[placeholder] Lead detail quick add actions`
 - `[placeholder] Integrations settings and webhook secret`
 - `[placeholder] Audit log endpoint response`
+
+
+## SMS / Twilio local testing
+
+- Default mode is `COMMUNICATIONS_MODE=mock`, so outbound SMS uses fake SIDs and does not call Twilio.
+- To enable real Twilio calls, set `COMMUNICATIONS_MODE=twilio` and configure credentials (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`) plus dealership Twilio sender settings.
+- Twilio webhooks are available at:
+  - `POST /api/v1/webhooks/twilio/sms/inbound`
+  - `POST /api/v1/webhooks/twilio/sms/status`
+- For local webhook testing, expose your API via ngrok and configure Twilio webhook URLs to your ngrok public URL.
