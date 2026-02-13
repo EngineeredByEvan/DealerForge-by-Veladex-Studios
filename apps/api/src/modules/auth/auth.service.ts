@@ -1,6 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { User, UserDealershipRole } from '@prisma/client';
+import { InvitationStatus, User, UserDealershipRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
@@ -21,23 +21,97 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const accessToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin, isPlatformOperator: user.isPlatformOperator },
-      { secret: process.env.JWT_SECRET, expiresIn: '15m' }
-    );
+    return this.issueTokens(user);
+  }
 
-    const refreshToken = this.jwtService.sign(
-      { sub: user.id },
-      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: '7d' }
-    );
 
-    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { refreshTokenHash }
+  async getInvitation(token: string): Promise<{
+    email: string;
+    role: string;
+    dealershipName: string;
+    expiresAt: string;
+    status: InvitationStatus;
+  }> {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { dealership: { select: { name: true } } }
     });
 
-    return { accessToken, refreshToken };
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+
+    const status = invitation.expiresAt.getTime() <= Date.now() && invitation.status === InvitationStatus.PENDING
+      ? InvitationStatus.EXPIRED
+      : invitation.status;
+
+    return {
+      email: invitation.email,
+      role: invitation.role,
+      dealershipName: invitation.dealership.name,
+      expiresAt: invitation.expiresAt.toISOString(),
+      status
+    };
+  }
+
+  async acceptInvitation(payload: {
+    token: string;
+    firstName: string;
+    lastName: string;
+    password: string;
+  }): Promise<{ accessToken: string; refreshToken: string }> {
+    const invitation = await this.prisma.invitation.findUnique({ where: { token: payload.token } });
+
+    if (!invitation || invitation.status !== InvitationStatus.PENDING) {
+      throw new NotFoundException('Invitation is invalid');
+    }
+
+    if (invitation.expiresAt.getTime() <= Date.now()) {
+      await this.prisma.invitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.EXPIRED } });
+      throw new BadRequestException('Invitation has expired');
+    }
+
+    const email = invitation.email.toLowerCase();
+    const passwordHash = await bcrypt.hash(payload.password, 10);
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+
+    const user = existing
+      ? await this.prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash,
+            firstName: payload.firstName,
+            lastName: payload.lastName
+          }
+        })
+      : await this.prisma.user.create({
+          data: {
+            email,
+            passwordHash,
+            firstName: payload.firstName,
+            lastName: payload.lastName
+          }
+        });
+
+    await this.prisma.userDealershipRole.upsert({
+      where: {
+        userId_dealershipId: { userId: user.id, dealershipId: invitation.dealershipId }
+      },
+      update: { role: invitation.role, isActive: true },
+      create: {
+        userId: user.id,
+        dealershipId: invitation.dealershipId,
+        role: invitation.role,
+        isActive: true
+      }
+    });
+
+    await this.prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() }
+    });
+
+    return this.issueTokens(user);
   }
 
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
@@ -137,6 +211,26 @@ export class AuthService {
         role: membership.role
       }))
     };
+  }
+
+
+  private async issueTokens(user: Pick<User, 'id' | 'email' | 'isPlatformAdmin' | 'isPlatformOperator'>): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessToken = this.jwtService.sign(
+      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin, isPlatformOperator: user.isPlatformOperator },
+      { secret: process.env.JWT_SECRET, expiresIn: '15m' }
+    );
+
+    const refreshToken = this.jwtService.sign(
+      { sub: user.id },
+      { secret: process.env.JWT_REFRESH_SECRET, expiresIn: '7d' }
+    );
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshTokenHash: await bcrypt.hash(refreshToken, 10) }
+    });
+
+    return { accessToken, refreshToken };
   }
 
   private findUserByEmail(email: string): Promise<UserWithRoles | null> {

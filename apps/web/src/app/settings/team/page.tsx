@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table } from '@/components/ui/table';
-import { TeamMembership, deactivateTeamUser, fetchTeamUsers, inviteTeamUser, setTeamUserRole } from '@/lib/api';
+import { TeamInvitation, TeamMembership, deactivateTeamUser, fetchTeamInvitations, fetchTeamUsers, inviteTeamUser, revokeTeamInvitation, setTeamUserRole } from '@/lib/api';
 
 const ROLES: TeamMembership['role'][] = ['ADMIN', 'MANAGER', 'BDC', 'SALES'];
 
@@ -16,11 +16,14 @@ export default function TeamSettingsPage(): JSX.Element {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<TeamMembership['role']>('SALES');
   const [inviteToken, setInviteToken] = useState('');
+  const [invitations, setInvitations] = useState<TeamInvitation[]>([]);
   const [error, setError] = useState('');
 
   async function load(): Promise<void> {
     try {
-      setUsers(await fetchTeamUsers());
+      const [usersResult, invitationResult] = await Promise.all([fetchTeamUsers(), fetchTeamInvitations()]);
+      setUsers(usersResult);
+      setInvitations(invitationResult);
     } catch {
       setError('Unable to load team users.');
     }
@@ -55,8 +58,27 @@ export default function TeamSettingsPage(): JSX.Element {
           </Select>
           <Button type="submit">Invite</Button>
         </form>
-        {inviteToken ? <p>Invite token: <code>{inviteToken}</code></p> : null}
+        {inviteToken ? <p>Invite link: <code>{`${window.location.origin}/accept-invite?token=${inviteToken}`}</code></p> : null}
       </SectionCard>
+
+      <SectionCard title="Invitations">
+        <Table>
+          <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Expires</th><th>Link</th><th>Actions</th></tr></thead>
+          <tbody>
+            {invitations.map((invitation) => (
+              <tr key={invitation.id}>
+                <td>{invitation.email}</td>
+                <td>{invitation.role}</td>
+                <td>{invitation.status}</td>
+                <td>{new Date(invitation.expiresAt).toLocaleString()}</td>
+                <td><code>{`${typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin}/accept-invite?token=${invitation.token}`}</code></td>
+                <td>{invitation.status === 'PENDING' ? <Button variant="ghost" onClick={async () => { await revokeTeamInvitation(invitation.id); await load(); }}>Revoke</Button> : null}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </SectionCard>
+
       <SectionCard title="Users">
         <Table>
           <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th>Actions</th></tr></thead>

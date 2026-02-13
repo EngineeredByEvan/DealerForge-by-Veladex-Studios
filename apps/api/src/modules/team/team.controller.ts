@@ -1,9 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { Request } from 'express';
-import { Public } from '../../common/decorators/public.decorator';
-import { SkipTenant } from '../../common/decorators/skip-tenant.decorator';
 import { AuthUser, TenantContext } from '../../common/types/request-context';
-import { AcceptInviteDto, InviteUserDto, SetRoleDto } from './team.dto';
+import { InviteUserDto, SetRoleDto } from './team.dto';
 import { TeamService } from './team.service';
 
 type TenantRequest = Request & { user?: AuthUser; tenant?: TenantContext };
@@ -22,11 +20,14 @@ export class TeamController {
     return this.teamService.inviteUser(req.user!, req.tenant!, payload);
   }
 
-  @Public()
-  @SkipTenant()
-  @Post('invitations/accept')
-  acceptInvite(@Body() payload: AcceptInviteDto) {
-    return this.teamService.acceptInvite(payload);
+  @Get('invitations')
+  listInvitations(@Req() req: TenantRequest) {
+    return this.teamService.listInvitations(req.user!, req.tenant!);
+  }
+
+  @Post('invitations/:invitationId/revoke')
+  revokeInvitation(@Req() req: TenantRequest, @Param('invitationId') invitationId: string) {
+    return this.teamService.revokeInvitation(req.user!, req.tenant!, invitationId);
   }
 
   @Patch('users/:userId/role')

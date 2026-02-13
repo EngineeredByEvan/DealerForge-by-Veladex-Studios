@@ -1,10 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InvitationStatus, Role } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthUser, TenantContext } from '../../common/types/request-context';
-import { AcceptInviteDto, InviteUserDto } from './team.dto';
+import { InviteUserDto } from './team.dto';
 
 @Injectable()
 export class TeamService {
@@ -48,64 +47,50 @@ export class TeamService {
     };
   }
 
-  async acceptInvite(payload: AcceptInviteDto) {
-    const invitation = await this.prisma.invitation.findUnique({ where: { token: payload.token } });
 
-    if (!invitation || invitation.status !== InvitationStatus.PENDING) {
-      throw new NotFoundException('Invitation is invalid');
-    }
+  async listInvitations(actor: AuthUser, tenant: TenantContext) {
+    await this.assertAdmin(actor, tenant);
 
-    if (invitation.expiresAt.getTime() <= Date.now()) {
-      await this.prisma.invitation.update({
-        where: { id: invitation.id },
-        data: { status: InvitationStatus.EXPIRED }
-      });
-      throw new BadRequestException('Invitation has expired');
-    }
-
-    const passwordHash = await bcrypt.hash(payload.password, 10);
-    const email = invitation.email.toLowerCase();
-
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    const user = existing
-      ? await this.prisma.user.update({ where: { id: existing.id }, data: { passwordHash } })
-      : await this.prisma.user.create({
-          data: {
-            email,
-            passwordHash,
-            firstName: payload.firstName ?? 'Invited',
-            lastName: payload.lastName ?? 'User'
-          }
-        });
-
-    await this.prisma.userDealershipRole.upsert({
-      where: {
-        userId_dealershipId: {
-          userId: user.id,
-          dealershipId: invitation.dealershipId
-        }
-      },
-      update: {
-        role: invitation.role,
-        isActive: true
-      },
-      create: {
-        userId: user.id,
-        dealershipId: invitation.dealershipId,
-        role: invitation.role,
-        isActive: true
-      }
+    const invitations = await this.prisma.invitation.findMany({
+      where: { dealershipId: tenant.dealershipId },
+      include: { dealership: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' }
     });
 
-    await this.prisma.invitation.update({
-      where: { id: invitation.id },
-      data: {
-        status: InvitationStatus.ACCEPTED,
-        acceptedAt: new Date()
-      }
+    return invitations.map((invitation) => ({
+      id: invitation.id,
+      token: invitation.token,
+      email: invitation.email,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+      status:
+        invitation.status === InvitationStatus.PENDING && invitation.expiresAt.getTime() <= Date.now()
+          ? InvitationStatus.EXPIRED
+          : invitation.status,
+      acceptedAt: invitation.acceptedAt,
+      dealershipName: invitation.dealership.name
+    }));
+  }
+
+  async revokeInvitation(actor: AuthUser, tenant: TenantContext, invitationId: string) {
+    await this.assertAdmin(actor, tenant);
+
+    const invitation = await this.prisma.invitation.findFirst({
+      where: { id: invitationId, dealershipId: tenant.dealershipId }
     });
 
-    return { success: true };
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      throw new BadRequestException('Only pending invitations can be revoked');
+    }
+
+    return this.prisma.invitation.update({
+      where: { id: invitationId },
+      data: { status: InvitationStatus.REVOKED }
+    });
   }
 
   async setRole(actor: AuthUser, tenant: TenantContext, userId: string, role: Role) {

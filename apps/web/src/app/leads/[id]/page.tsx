@@ -37,6 +37,7 @@ import {
   updateLead,
   updateLeadStatus
 } from '@/lib/api';
+import { subscribeToDealershipChange } from '@/lib/dealership-store';
 
 type LeadDetailPageProps = {
   params: {
@@ -91,6 +92,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [statuses, setStatuses] = useState<string[]>([]);
   const [leadTypes, setLeadTypes] = useState<string[]>([]);
   const [myRole, setMyRole] = useState<string>('');
+  const [aiRefreshKey, setAiRefreshKey] = useState(0);
+  const [dealershipVersion, setDealershipVersion] = useState(0);
 
   const [composeChannel, setComposeChannel] = useState<'SMS' | 'EMAIL' | 'NOTE'>('SMS');
   const [composeBody, setComposeBody] = useState('');
@@ -148,7 +151,16 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     }
 
     void load();
-  }, [params.id]);
+  }, [params.id, dealershipVersion]);
+
+
+  useEffect(() => {
+    const unsubscribe = subscribeToDealershipChange(() => {
+      setAiRefreshKey((previous) => previous + 1);
+      setDealershipVersion((previous) => previous + 1);
+    });
+    return unsubscribe;
+  }, []);
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const messageItems: TimelineItem[] = messages.map((message) => ({
@@ -224,7 +236,9 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         setMessages((previous) => [{ id: optimisticId, dealershipId: lead?.dealershipId ?? '', threadId: '', channel: 'SMS', direction: 'OUTBOUND', body: composeBody, status: 'QUEUED', sentAt: null, actorUserId: null, providerMessageId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...previous]);
         const created = await sendSmsMessage(params.id, { body: composeBody });
         setMessages((previous) => [created.message, ...previous.filter((msg) => msg.id !== optimisticId)]);
+        setMessages(await fetchMessagesByLead(params.id));
         setLead(created.lead);
+        setAiRefreshKey((previous) => previous + 1);
       } else {
         const created = await sendMessage(params.id, {
           channel: composeChannel,
@@ -232,7 +246,9 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
           subject: composeSubject || undefined
         });
         setMessages((previous) => [created.message, ...previous]);
+        setMessages(await fetchMessagesByLead(params.id));
         setLead(created.lead);
+        setAiRefreshKey((previous) => previous + 1);
       }
 
       setComposeBody('');
@@ -259,7 +275,9 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         body: callNotes
       });
       setMessages((previous) => [created.message, ...previous]);
+      setMessages(await fetchMessagesByLead(params.id));
       setLead(created.lead);
+      setAiRefreshKey((previous) => previous + 1);
       setCallNotes('');
       setCallDurationSec('');
       push('Call logged');
@@ -311,6 +329,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       });
       setAppointments((previous) => [created, ...previous]);
       if (created.lead) setLead(created.lead);
+      setAiRefreshKey((previous) => previous + 1);
       setAppointmentStartAt('');
       setAppointmentEndAt('');
       push('Appointment created');
@@ -543,7 +562,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
             ))}
           </Card>
 
-          <AiPanel leadId={lead.id} />
+          <AiPanel leadId={lead.id} refreshKey={aiRefreshKey} />
         </aside>
       </div>
     </main>
