@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { DataTableShell } from '@/components/layout/data-table';
 import { FormField } from '@/components/layout/form-field';
 import { PageHeader } from '@/components/layout/page-header';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table } from '@/components/ui/table';
+import { useToast } from '@/components/ui/toast';
 import {
   Appointment,
   cancelAppointment,
@@ -17,10 +18,34 @@ import {
   createAppointment,
   fetchAppointments
 } from '@/lib/api';
+import { subscribeToDealershipChange } from '@/lib/dealership-store';
+
+function toIsoRange(preset: string): string | undefined {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (preset === 'today') {
+    const end = new Date(startOfToday);
+    end.setDate(end.getDate() + 1);
+    return `${startOfToday.toISOString()},${end.toISOString()}`;
+  }
+
+  if (preset === 'week') {
+    const weekStart = new Date(startOfToday);
+    weekStart.setDate(startOfToday.getDate() - startOfToday.getDay());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    return `${weekStart.toISOString()},${weekEnd.toISOString()}`;
+  }
+
+  return undefined;
+}
 
 export default function AppointmentsPage(): JSX.Element {
   const searchParams = useSearchParams();
   const focusId = searchParams.get('focus') ?? '';
+  const range = searchParams.get('range') ?? '';
+  const { push } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
@@ -29,22 +54,30 @@ export default function AppointmentsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [focusedAppointmentId, setFocusedAppointmentId] = useState('');
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      const result = await fetchAppointments();
+      const result = await fetchAppointments({ range: toIsoRange(range) });
       setAppointments(result);
       setError(null);
     } catch {
       setError('Unable to load appointments');
+      push('Unable to load appointments');
     } finally {
       setLoading(false);
     }
-  }
+  }, [push, range]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    const unsub = subscribeToDealershipChange(() => {
+      void load();
+    });
+    return unsub;
+  }, [load]);
 
   useEffect(() => {
     if (!focusId) return;
@@ -68,8 +101,10 @@ export default function AppointmentsPage(): JSX.Element {
       setEndAt('');
       setNote('');
       setError(null);
+      push('Appointment created');
     } catch {
       setError('Unable to create appointment');
+      push('Unable to create appointment');
     }
   }
 
@@ -82,6 +117,7 @@ export default function AppointmentsPage(): JSX.Element {
       setError(null);
     } catch {
       setError('Unable to confirm appointment');
+      push('Unable to confirm appointment');
     }
   }
 
@@ -94,6 +130,7 @@ export default function AppointmentsPage(): JSX.Element {
       setError(null);
     } catch {
       setError('Unable to cancel appointment');
+      push('Unable to cancel appointment');
     }
   }
 
@@ -121,7 +158,8 @@ export default function AppointmentsPage(): JSX.Element {
         <DataTableShell
           loading={loading}
           empty={!loading && appointments.length === 0}
-          toolbar={<div className="filter-bar"><Input readOnly value="Filter and sort controls coming soon" /></div>}
+          emptyState="No appointments yet"
+          toolbar={<div className="filter-bar"><Input readOnly value={range ? `Showing ${range} appointments` : 'All appointment windows'} /></div>}
           pagination={<><span>Showing {appointments.length} appointments</span><Button variant="ghost">Next</Button></>}
         >
           <Table>

@@ -134,7 +134,7 @@ export default function DashboardPage(): JSX.Element {
     return [
       { label: 'Leads Today', value: String(leadsToday), trend: getTrend(leadsToday, leadsYesterday), href: '/leads?range=today' },
       { label: 'Leads This Week', value: String(leadsWeek), trend: getTrend(leadsWeek, leadsPrevWeek), href: '/leads?range=week' },
-      { label: 'Appointments', value: String(appointmentsCurrent), trend: getTrend(appointmentsCurrent, appointmentsPrev), href: '/appointments' },
+      { label: 'Appointments', value: String(appointmentsCurrent), trend: getTrend(appointmentsCurrent, appointmentsPrev), href: '/appointments?range=week' },
       { label: 'Sold This Month', value: String(soldMonth), trend: getTrend(soldMonth, soldPrevMonth), href: '/leads?status=SOLD&range=month' },
       {
         label: 'Avg. First Response',
