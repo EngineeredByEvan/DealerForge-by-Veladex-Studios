@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { DataTableShell } from '@/components/layout/data-table';
 import { FormSection } from '@/components/layout/form-section';
@@ -18,9 +19,12 @@ import { CreateLeadPayload, Lead, LeadStatus, createLead, fetchLeads } from '@/l
 const LEAD_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'APPOINTMENT_SET', 'NEGOTIATING', 'SOLD', 'LOST'];
 
 export default function LeadsPage(): JSX.Element {
+  const searchParams = useSearchParams();
+  const focusId = searchParams.get('focus') ?? '';
+  const range = searchParams.get('range') ?? '';
   const { push } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(searchParams.get('status') ?? '');
   const [assignedTo, setAssignedTo] = useState('');
   const [source, setSource] = useState('');
   const [q, setQ] = useState('');
@@ -29,17 +33,28 @@ export default function LeadsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [focusedLeadId, setFocusedLeadId] = useState('');
   const [formState, setFormState] = useState<CreateLeadPayload>({ firstName: '', lastName: '', email: '', phone: '', source: '', vehicleInterest: '' });
 
   const loadLeads = useCallback(async (): Promise<void> => {
     setLoading(true);
-    const data = await fetchLeads({ status: status ? (status as LeadStatus) : undefined, assignedTo: assignedTo || undefined, source: source || undefined, q: q || undefined });
+    const dateRangeMap: Record<string, string> = { today: 'TODAY', week: 'THIS_WEEK', month: 'THIS_MONTH' };
+    const data = await fetchLeads({ status: status ? (status as LeadStatus) : undefined, assignedTo: assignedTo || undefined, source: source || undefined, q: q || undefined, dateRange: dateRangeMap[range] ?? undefined });
     setLeads(data);
     setLoading(false);
     setError(null);
-  }, [assignedTo, q, source, status]);
+  }, [assignedTo, q, range, source, status]);
 
   useEffect(() => { void loadLeads(); }, [loadLeads]);
+
+  useEffect(() => {
+    if (!focusId) return;
+    setFocusedLeadId(focusId);
+    const timer = window.setTimeout(() => setFocusedLeadId(''), 1500);
+    const row = document.querySelector<HTMLTableRowElement>(`tr[data-lead-id="${focusId}"]`);
+    row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return () => window.clearTimeout(timer);
+  }, [focusId, leads]);
 
   const sortedLeads = useMemo(() => [...leads].sort((a, b) => {
     const aName = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim();
@@ -82,10 +97,10 @@ export default function LeadsPage(): JSX.Element {
       </SectionCard>
 
       <SectionCard title="Pipeline records">
-        <DataTableShell loading={loading} empty={!loading && leads.length === 0} toolbar={<div className="filter-bar"><Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button></div>} pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost">Next</Button></>}>
+        <DataTableShell loading={loading} empty={!loading && leads.length === 0} toolbar={<div className="filter-bar"><Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button>{searchParams.get('sla') === 'first-response' ? <Badge>First response SLA focus</Badge> : null}</div>} pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost">Next</Button></>}>
           <Table>
             <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Vehicle</th><th>Assigned</th></tr></thead>
-            <tbody>{sortedLeads.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td><Badge>{lead.status}</Badge></td><td><Badge>{lead.source?.name ?? '—'}</Badge></td><td>{lead.vehicleInterest ?? '—'}</td><td><span className="assignee-pill">{(lead.assignedToUserId ?? 'UN').slice(0, 2).toUpperCase()}</span>{lead.assignedToUserId ?? 'Unassigned'}</td></tr>)}</tbody>
+            <tbody>{sortedLeads.map((lead) => <tr key={lead.id} data-lead-id={lead.id} className={focusedLeadId === lead.id ? 'focus-row' : ''}><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td><Badge>{lead.status}</Badge></td><td><Badge>{lead.source?.name ?? '—'}</Badge></td><td>{lead.vehicleInterest ?? '—'}</td><td><span className="assignee-pill">{(lead.assignedToUserId ?? 'UN').slice(0, 2).toUpperCase()}</span>{lead.assignedToUserId ?? 'Unassigned'}</td></tr>)}</tbody>
           </Table>
         </DataTableShell>
       </SectionCard>

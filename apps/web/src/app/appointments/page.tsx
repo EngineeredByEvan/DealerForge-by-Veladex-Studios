@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { FormEvent, useEffect, useState } from 'react';
 import { DataTableShell } from '@/components/layout/data-table';
 import { FormField } from '@/components/layout/form-field';
@@ -18,12 +19,15 @@ import {
 } from '@/lib/api';
 
 export default function AppointmentsPage(): JSX.Element {
+  const searchParams = useSearchParams();
+  const focusId = searchParams.get('focus') ?? '';
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [startAt, setStartAt] = useState('');
   const [endAt, setEndAt] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [focusedAppointmentId, setFocusedAppointmentId] = useState('');
 
   async function load(): Promise<void> {
     setLoading(true);
@@ -41,6 +45,15 @@ export default function AppointmentsPage(): JSX.Element {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!focusId) return;
+    setFocusedAppointmentId(focusId);
+    const timer = window.setTimeout(() => setFocusedAppointmentId(''), 1500);
+    const row = document.querySelector<HTMLTableRowElement>(`tr[data-appointment-id="${focusId}"]`);
+    row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return () => window.clearTimeout(timer);
+  }, [focusId, appointments]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -123,7 +136,7 @@ export default function AppointmentsPage(): JSX.Element {
             </thead>
             <tbody>
               {appointments.map((appointment) => (
-                <tr key={appointment.id}>
+                <tr key={appointment.id} data-appointment-id={appointment.id} className={focusedAppointmentId === appointment.id ? 'focus-row' : ''}>
                   <td><Badge>{appointment.status}</Badge></td>
                   <td>{new Date(appointment.start_at).toLocaleString()} - {new Date(appointment.end_at).toLocaleString()}</td>
                   <td>{appointment.lead ? `${appointment.lead.firstName ?? ''} ${appointment.lead.lastName ?? ''}`.trim() || appointment.lead.id : '—'}</td>

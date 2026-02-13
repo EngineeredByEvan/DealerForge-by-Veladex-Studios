@@ -8,7 +8,24 @@ import { DropdownItem, DropdownMenu } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useToast } from '@/components/ui/toast';
-import { clearAuth, fetchMe, getSelectedDealershipId, setSelectedDealershipId } from '@/lib/api';
+import {
+  clearAuth,
+  fetchAppointments,
+  fetchLeads,
+  fetchMe,
+  getSelectedDealershipId,
+  setSelectedDealershipId
+} from '@/lib/api';
+import {
+  AppNotification,
+  getNotificationRelativeTime,
+  getNotifications,
+  ingestAppointmentNotifications,
+  ingestLeadNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  subscribeToNotificationUpdates
+} from '@/lib/notifications';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -29,12 +46,6 @@ const commandItems = [
   { group: 'Search', label: 'Search Appointments', href: '/appointments' }
 ];
 
-const seededNotifications = [
-  { id: '1', title: '3 new leads assigned', time: '2m ago', cta: 'Review leads', unread: true },
-  { id: '2', title: 'Appointment rescheduled', time: '28m ago', cta: 'Open calendar', unread: true },
-  { id: '3', title: 'CSV import completed', time: '1h ago', cta: 'View integrations', unread: false }
-];
-
 export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const pathname = usePathname();
   const router = useRouter();
@@ -45,7 +56,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [notifications, setNotifications] = useState(seededNotifications);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const filteredCommands = useMemo(
     () => commandItems.filter((item) => item.label.toLowerCase().includes(query.toLowerCase())),
@@ -68,6 +79,26 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   }, [pathname, router]);
 
   useEffect(() => {
+    if (!selectedDealership) return;
+
+    setNotifications(getNotifications(selectedDealership));
+
+    void Promise.all([fetchLeads(), fetchAppointments()])
+      .then(([leads, appointments]) => {
+        ingestLeadNotifications(selectedDealership, leads);
+        ingestAppointmentNotifications(selectedDealership, appointments);
+        setNotifications(getNotifications(selectedDealership));
+      })
+      .catch(() => {
+        setNotifications(getNotifications(selectedDealership));
+      });
+
+    return subscribeToNotificationUpdates(() => {
+      setNotifications(getNotifications(selectedDealership));
+    });
+  }, [selectedDealership]);
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -81,7 +112,14 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
 
   if (pathname === '/login') return <>{children}</>;
 
-  const unreadCount = notifications.filter((item) => item.unread).length;
+  const unreadCount = notifications.filter((item) => !item.read).length;
+
+  function onNotificationNavigate(item: AppNotification): void {
+    if (!selectedDealership) return;
+    setNotifications(markNotificationRead(selectedDealership, item.id));
+    setNotificationOpen(false);
+    router.push(item.href);
+  }
 
   return (
     <div className="app-shell">
@@ -140,7 +178,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                     <Button
                       variant="ghost"
                       onClick={() => {
-                        setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
+                        if (!selectedDealership) return;
+                        setNotifications(markAllNotificationsRead(selectedDealership));
                         push('Marked all notifications as read');
                       }}
                     >
@@ -149,18 +188,19 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                   </div>
                   <div className="notifications-list">
                     {notifications.map((item) => (
-                      <div key={item.id} className={`notification-item ${item.unread ? 'unread' : ''}`}>
-                        <span>•</span>
-                        <div>
+                      <div key={item.id} className={`notification-item ${item.read ? '' : 'unread'}`}>
+                        <button className="notification-main" onClick={() => onNotificationNavigate(item)}>
                           <div style={{ fontWeight: 600 }}>{item.title}</div>
-                          <small style={{ color: 'var(--muted-foreground)' }}>{item.time}</small>
-                          {item.cta ? <div><Button variant="ghost" onClick={() => push(item.cta)}>{item.cta}</Button></div> : null}
-                        </div>
+                          <small style={{ color: 'var(--muted-foreground)' }}>{item.message}</small>
+                          <small style={{ color: 'var(--muted-foreground)', display: 'block', marginTop: 4 }}>{getNotificationRelativeTime(item.createdAt)}</small>
+                        </button>
+                        <Button variant="ghost" onClick={() => onNotificationNavigate(item)}>{item.ctaLabel}</Button>
                       </div>
                     ))}
+                    {notifications.length === 0 ? <small style={{ color: 'var(--muted-foreground)' }}>No notifications yet.</small> : null}
                   </div>
-                  <Button variant="secondary" onClick={() => push('Viewing all notifications')}>
-                    View all
+                  <Button variant="secondary" onClick={() => { setNotificationOpen(false); router.push('/settings/integrations'); }}>
+                    View integrations
                   </Button>
                 </div>
               ) : null}
