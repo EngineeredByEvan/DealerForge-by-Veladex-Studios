@@ -3,6 +3,8 @@ import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
+import { LeadScoringService } from '../leads/lead-scoring.service';
+import { LeadsService } from '../leads/leads.service';
 import {
   CreateAppointmentDto,
   ListAppointmentsQueryDto,
@@ -25,7 +27,9 @@ export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly eventLogService: EventLogService
+    private readonly eventLogService: EventLogService,
+    private readonly leadScoringService: LeadScoringService,
+    private readonly leadsService: LeadsService
   ) {}
 
   async listByDealership(dealershipId: string, query: ListAppointmentsQueryDto) {
@@ -82,7 +86,8 @@ export class AppointmentsService {
       payload: { status: appointment.status, leadId: appointment.lead_id }
     });
 
-    return appointment;
+    const updatedLead = await this.refreshLeadScoreIfLinked(dealershipId, appointment.lead_id);
+    return { ...appointment, lead: updatedLead ?? appointment.lead };
   }
 
   async updateAppointment(
@@ -138,7 +143,8 @@ export class AppointmentsService {
       });
     }
 
-    return appointment;
+    const updatedLead = await this.refreshLeadScoreIfLinked(dealershipId, appointment.lead_id);
+    return { ...appointment, lead: updatedLead ?? appointment.lead };
   }
 
   async confirmAppointment(dealershipId: string, appointmentId: string, actorUserId?: string) {
@@ -177,7 +183,8 @@ export class AppointmentsService {
       payload: { status: appointment.status }
     });
 
-    return appointment;
+    const updatedLead = await this.refreshLeadScoreIfLinked(dealershipId, appointment.lead_id);
+    return { ...appointment, lead: updatedLead ?? appointment.lead };
   }
 
   async cancelAppointment(dealershipId: string, appointmentId: string, actorUserId?: string) {
@@ -219,7 +226,17 @@ export class AppointmentsService {
       payload: { status: appointment.status }
     });
 
-    return appointment;
+    const updatedLead = await this.refreshLeadScoreIfLinked(dealershipId, appointment.lead_id);
+    return { ...appointment, lead: updatedLead ?? appointment.lead };
+  }
+
+
+  private async refreshLeadScoreIfLinked(dealershipId: string, leadId?: string | null) {
+    if (!leadId) return null;
+
+    await this.prisma.lead.update({ where: { id: leadId }, data: { lastActivityAt: new Date() }, select: { id: true } });
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
+    return this.leadsService.getLeadSummaryOrThrow(dealershipId, leadId);
   }
 
   private parseRange(range: string): { start: Date; end: Date } | null {

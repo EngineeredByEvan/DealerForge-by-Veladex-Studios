@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { EventLogModule } from '../event-log/event-log.module';
+import { LeadsModule } from '../leads/leads.module';
 import { CommunicationsController } from './communications.controller';
 import { CommunicationsService } from './communications.service';
 import { EMAIL_PROVIDER_TOKEN } from './providers/email-provider.interface';
@@ -14,7 +15,7 @@ import { TwilioSmsProvider } from './providers/twilio-sms.provider';
 import { TwilioWebhooksController } from './twilio-webhooks.controller';
 
 @Module({
-  imports: [PrismaModule, AuditModule, EventLogModule],
+  imports: [PrismaModule, AuditModule, EventLogModule, LeadsModule],
   controllers: [CommunicationsController, TwilioWebhooksController],
   providers: [
     CommunicationsService,

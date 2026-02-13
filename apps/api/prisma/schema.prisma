@@ -266,7 +266,8 @@ model Lead {
   soldAt            DateTime?
   soldByUserId      String?
   soldByUser        User?      @relation("LeadSoldBy", fields: [soldByUserId], references: [id], onDelete: SetNull)
-  leadScore         Int?
+  leadScore         Int      @default(0)
+  leadScoreUpdatedAt DateTime @default(now())
   firstName         String?
   lastName          String?
   email             String?

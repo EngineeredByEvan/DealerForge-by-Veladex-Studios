@@ -223,14 +223,16 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         const optimisticId = `optimistic-${Date.now()}`;
         setMessages((previous) => [{ id: optimisticId, dealershipId: lead?.dealershipId ?? '', threadId: '', channel: 'SMS', direction: 'OUTBOUND', body: composeBody, status: 'QUEUED', sentAt: null, actorUserId: null, providerMessageId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...previous]);
         const created = await sendSmsMessage(params.id, { body: composeBody });
-        setMessages((previous) => [created, ...previous.filter((msg) => msg.id !== optimisticId)]);
+        setMessages((previous) => [created.message, ...previous.filter((msg) => msg.id !== optimisticId)]);
+        setLead(created.lead);
       } else {
         const created = await sendMessage(params.id, {
           channel: composeChannel,
           body: composeBody,
           subject: composeSubject || undefined
         });
-        setMessages((previous) => [created, ...previous]);
+        setMessages((previous) => [created.message, ...previous]);
+        setLead(created.lead);
       }
 
       setComposeBody('');
@@ -256,7 +258,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         outcome: callOutcome,
         body: callNotes
       });
-      setMessages((previous) => [created, ...previous]);
+      setMessages((previous) => [created.message, ...previous]);
+      setLead(created.lead);
       setCallNotes('');
       setCallDurationSec('');
       push('Call logged');
@@ -307,6 +310,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         lead_id: params.id
       });
       setAppointments((previous) => [created, ...previous]);
+      if (created.lead) setLead(created.lead);
       setAppointmentStartAt('');
       setAppointmentEndAt('');
       push('Appointment created');
@@ -512,7 +516,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                 <option value="">Unassigned</option>
                 {teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
               </Select>
-              <p><strong>Lead Score:</strong> {lead.leadScore ?? '—'}</p>
+              <p><strong>Lead Score:</strong> {lead.leadScore ?? 0}/100</p>
               <p><strong>Source:</strong> {lead.source?.name ?? '—'}</p>
               <p><strong>Vehicle:</strong> {lead.vehicleInterest ?? '—'}</p>
               <p><strong>Sold Date:</strong> {lead.soldAt ? formatDateTime(lead.soldAt) : '—'}</p>

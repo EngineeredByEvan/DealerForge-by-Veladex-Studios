@@ -13,6 +13,8 @@ import {
   TelephonyProvider
 } from './providers/telephony-provider.interface';
 import { BulkSendDto, CommunicationChannel, CreateTemplateDto, LogCallDto, SendLeadSmsDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
+import { LeadScoringService } from '../leads/lead-scoring.service';
+import { LeadsService } from '../leads/leads.service';
 
 const MESSAGE_INCLUDE = {
   actorUser: {
@@ -33,7 +35,9 @@ export class CommunicationsService {
     private readonly eventLogService: EventLogService,
     @Inject(SMS_PROVIDER_TOKEN) private readonly smsProvider: SmsProvider,
     @Inject(EMAIL_PROVIDER_TOKEN) private readonly emailProvider: EmailProvider,
-    @Inject(TELEPHONY_PROVIDER_TOKEN) private readonly telephonyProvider: TelephonyProvider
+    @Inject(TELEPHONY_PROVIDER_TOKEN) private readonly telephonyProvider: TelephonyProvider,
+    private readonly leadScoringService: LeadScoringService,
+    private readonly leadsService: LeadsService
   ) {}
 
   async createOrGetThread(dealershipId: string, leadId: string) {
@@ -136,8 +140,12 @@ export class CommunicationsService {
     });
 
     await this.prisma.lead.update({ where: { id: leadId }, data: { lastActivityAt: new Date() }, select: { id: true } });
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
 
-    return updated;
+    return {
+      message: updated,
+      lead: await this.leadsService.getLeadSummaryOrThrow(dealershipId, leadId)
+    };
   }
 
   async recordInboundSms(input: {
@@ -182,6 +190,9 @@ export class CommunicationsService {
       entityId: message.id,
       payload: { leadId: lead.id, threadId: thread.id }
     });
+
+    await this.prisma.lead.update({ where: { id: lead.id }, data: { lastActivityAt: new Date() }, select: { id: true } });
+    await this.leadScoringService.recalculateAndPersist(lead.id, input.dealershipId);
 
     return message;
   }
@@ -273,8 +284,12 @@ export class CommunicationsService {
     });
 
     await this.prisma.lead.update({ where: { id: leadId }, data: { lastActivityAt: new Date() }, select: { id: true } });
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
 
-    return message;
+    return {
+      message,
+      lead: await this.leadsService.getLeadSummaryOrThrow(dealershipId, leadId)
+    };
   }
 
   async logCall(dealershipId: string, leadId: string, actorUserId: string, payload: LogCallDto) {
@@ -319,8 +334,12 @@ export class CommunicationsService {
     });
 
     await this.prisma.lead.update({ where: { id: leadId }, data: { lastActivityAt: new Date() }, select: { id: true } });
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
 
-    return message;
+    return {
+      message,
+      lead: await this.leadsService.getLeadSummaryOrThrow(dealershipId, leadId)
+    };
   }
 
   listTemplates(dealershipId: string, channel?: CommunicationChannel) {

@@ -23,7 +23,7 @@ describe('Communications endpoints (e2e)', () => {
     memberships: [{ userId: 'u-admin', dealershipId: 'd-1', role: 'ADMIN' }],
     dealerships: [{ id: 'd-1', twilioFromPhone: '+15550009999', twilioMessagingServiceSid: 'MG123' }],
     leads: [
-      { id: 'lead-1', dealershipId: 'd-1', phone: '+15550001111', email: 'lead@example.com', status: 'NEW', lastActivityAt: null as Date | null }
+      { id: 'lead-1', dealershipId: 'd-1', phone: '+15550001111', email: 'lead@example.com', status: 'NEW', lastActivityAt: null as Date | null, firstName: 'Lead', lastName: 'One', vehicleInterest: null, sourceId: null, soldAt: null, leadScore: 0, leadScoreUpdatedAt: new Date(), assignedToUserId: null }
     ],
     threads: [] as Array<{ id: string; dealershipId: string; leadId: string; createdAt: Date }>,
     messages: [] as Array<any>,
@@ -65,17 +65,25 @@ describe('Communications endpoints (e2e)', () => {
       )
     },
     lead: {
-      findFirst: jest.fn(async ({ where }: any) =>
-        state.leads.find((lead) =>
-          (where.id ? lead.id === where.id : true) &&
-          (where.dealershipId ? lead.dealershipId === where.dealershipId : true) &&
-          (where.phone ? lead.phone === where.phone : true)
-        ) ?? null
-      ),
+      findFirst: jest.fn(async ({ where, select, include }: any) => {
+        const lead = state.leads.find((candidate) =>
+          (where.id ? candidate.id === where.id : true) &&
+          (where.dealershipId ? candidate.dealershipId === where.dealershipId : true) &&
+          (where.phone ? candidate.phone === where.phone : true)
+        );
+        if (!lead) return null;
+        if (include?.source || include?.assignedToUser) {
+          return { ...lead, source: null, assignedToUser: null };
+        }
+        if (select?.appointments) {
+          return { ...lead, appointments: [] };
+        }
+        return lead;
+      }),
       update: jest.fn(async ({ where, data }: any) => {
         const lead = state.leads.find((candidate) => candidate.id === where.id);
         if (!lead) throw new Error('Lead not found');
-        lead.lastActivityAt = data.lastActivityAt ?? lead.lastActivityAt;
+        Object.assign(lead, data);
         return lead;
       }),
       create: jest.fn(async ({ data }: any) => {
@@ -101,6 +109,7 @@ describe('Communications endpoints (e2e)', () => {
       )
     },
     message: {
+      count: jest.fn(async ({ where }: any) => state.messages.filter((message) => (where.channel?.in ? where.channel.in.includes(message.channel) : where.channel ? message.channel === where.channel : true) && (where.direction ? message.direction === where.direction : true)).length),
       create: jest.fn(async ({ data }: any) => {
         const message = {
           id: `msg-${state.messages.length + 1}`,
@@ -188,8 +197,9 @@ describe('Communications endpoints (e2e)', () => {
       .send({ body: 'Hello from test' })
       .expect(201);
 
-    expect(response.body.channel).toBe('SMS');
-    expect(response.body.status).toBe('SENT');
+    expect(response.body.message.channel).toBe('SMS');
+    expect(response.body.message.status).toBe('SENT');
+    expect(response.body.lead.leadScore).toBeGreaterThan(0);
     expect(state.eventLogs.some((event) => event.eventType === 'sms_sent')).toBe(true);
   });
 
