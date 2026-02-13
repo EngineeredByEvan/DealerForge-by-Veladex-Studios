@@ -286,7 +286,14 @@ describe('Leads endpoints (e2e)', () => {
         return buildActivityResponse(activity);
       })
     },
-    $transaction: jest.fn(async (operations: any[]) => Promise.all(operations))
+    $transaction: jest.fn(async (operations: any[]) => Promise.all(operations)),
+    auditLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `audit-${Date.now()}`, createdAt: new Date(), ...data }))
+    },
+    eventLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `event-${Date.now()}`, ...data })),
+      findMany: jest.fn(async ({ where }: any) => [])
+    }
   };
 
   const loginAsAdmin = async (): Promise<string> => {
@@ -350,6 +357,15 @@ describe('Leads endpoints (e2e)', () => {
 
     expect(createRes.body.dealershipId).toBe('d-1');
     expect(createRes.body.source.name).toBe('AutoTrader');
+    expect(prismaMock.eventLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          dealershipId: 'd-1',
+          eventType: 'lead_created',
+          entityType: 'Lead'
+        })
+      })
+    );
 
     const leadId = createRes.body.id;
 

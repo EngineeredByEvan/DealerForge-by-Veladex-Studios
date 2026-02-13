@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, TaskStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EventLogService } from '../event-log/event-log.service';
 import { CreateTaskDto, ListTasksQueryDto, SnoozeTaskDto, UpdateTaskDto } from './tasks.dto';
 
 const TASK_INCLUDE = {
@@ -27,7 +28,8 @@ const TASK_INCLUDE = {
 export class TasksService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly eventLogService: EventLogService
   ) {}
 
   async listByDealership(dealershipId: string, query: ListTasksQueryDto) {
@@ -69,6 +71,15 @@ export class TasksService {
     });
 
     await this.auditService.logEvent({ dealershipId, actor: { userId: actorUserId }, action: 'task_created', entityType: 'Task', entityId: task.id, metadata: { status: task.status, leadId: task.leadId } });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'task_created',
+      entityType: 'Task',
+      entityId: task.id,
+      payload: { status: task.status, leadId: task.leadId }
+    });
 
     return task;
   }
@@ -122,6 +133,15 @@ export class TasksService {
     });
 
     await this.auditService.logEvent({ dealershipId, actor: { userId: actorUserId }, action: 'task_completed', entityType: 'Task', entityId: updated.id });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'task_completed',
+      entityType: 'Task',
+      entityId: updated.id,
+      payload: { status: updated.status }
+    });
 
     return updated;
   }

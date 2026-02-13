@@ -98,6 +98,7 @@ model Dealership {
   appointments Appointment[]
   integrations Integration[]
   integrationEvents IntegrationEvent[]
+  eventLogs    EventLog[]
   aiRequestLogs AIRequestLog[]
   auditLogs    AuditLog[]
   users       UserDealershipRole[]
@@ -137,8 +138,25 @@ model User {
   assignedTasks    Task[]               @relation("TaskAssignments")
   activities       Activity[]
   auditLogs        AuditLog[]
+  eventLogs        EventLog[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
+}
+
+model EventLog {
+  id           String     @id @default(cuid())
+  dealershipId String
+  actorUserId  String?
+  entityType   String
+  entityId     String
+  eventType    String
+  payload      Json?
+  occurredAt   DateTime   @default(now())
+  dealership   Dealership @relation(fields: [dealershipId], references: [id])
+  actorUser    User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([dealershipId, occurredAt])
+  @@index([eventType])
 }
 
 model UserDealershipRole {

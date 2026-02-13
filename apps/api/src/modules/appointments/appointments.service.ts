@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { AppointmentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EventLogService } from '../event-log/event-log.service';
 import {
   CreateAppointmentDto,
   ListAppointmentsQueryDto,
@@ -23,7 +24,8 @@ const APPOINTMENT_INCLUDE = {
 export class AppointmentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly eventLogService: EventLogService
   ) {}
 
   async listByDealership(dealershipId: string, query: ListAppointmentsQueryDto) {
@@ -71,6 +73,15 @@ export class AppointmentsService {
       metadata: { status: appointment.status, leadId: appointment.lead_id }
     });
 
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'appointment_created',
+      entityType: 'Appointment',
+      entityId: appointment.id,
+      payload: { status: appointment.status, leadId: appointment.lead_id }
+    });
+
     return appointment;
   }
 
@@ -111,6 +122,22 @@ export class AppointmentsService {
       metadata: payload as Prisma.InputJsonValue
     });
 
+    if (
+      appointment.status === AppointmentStatus.CONFIRMED ||
+      appointment.status === AppointmentStatus.CANCELED ||
+      appointment.status === AppointmentStatus.SHOWED ||
+      appointment.status === AppointmentStatus.NO_SHOW
+    ) {
+      await this.eventLogService.emit({
+        dealershipId,
+        actorUserId,
+        eventType: 'appointment_status_changed',
+        entityType: 'Appointment',
+        entityId: appointment.id,
+        payload: { status: appointment.status }
+      });
+    }
+
     return appointment;
   }
 
@@ -139,6 +166,15 @@ export class AppointmentsService {
       action: 'appointment_confirmed',
       entityType: 'Appointment',
       entityId: appointment.id
+    });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'appointment_status_changed',
+      entityType: 'Appointment',
+      entityId: appointment.id,
+      payload: { status: appointment.status }
     });
 
     return appointment;
@@ -172,6 +208,15 @@ export class AppointmentsService {
       action: 'appointment_canceled',
       entityType: 'Appointment',
       entityId: appointment.id
+    });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'appointment_status_changed',
+      entityType: 'Appointment',
+      entityId: appointment.id,
+      payload: { status: appointment.status }
     });
 
     return appointment;

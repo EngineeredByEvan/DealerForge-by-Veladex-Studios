@@ -177,6 +177,13 @@ describe('Integrations (e2e)', () => {
         state.leads.push(lead);
         return lead;
       })
+    },
+    auditLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `audit-${Date.now()}`, createdAt: new Date(), ...data }))
+    },
+    eventLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `event-${Date.now()}`, ...data })),
+      findMany: jest.fn(async ({ where }: any) => [])
     }
   };
 
