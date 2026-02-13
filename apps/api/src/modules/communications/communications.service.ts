@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { MessageChannel, MessageStatus, Prisma } from '@prisma/client';
+import { MessageChannel, MessageDirection, MessageStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
@@ -86,7 +86,7 @@ export class CommunicationsService {
         dealershipId,
         threadId: thread.id,
         channel: CommunicationChannel.SMS,
-        direction: payload.direction ?? CommunicationDirection.OUTBOUND,
+        direction: payload.direction ?? MessageDirection.OUTBOUND,
         body: payload.body,
         status: MessageStatus.QUEUED,
         actorUserId,
@@ -163,7 +163,7 @@ export class CommunicationsService {
         dealershipId: input.dealershipId,
         threadId: thread.id,
         channel: CommunicationChannel.SMS,
-        direction: CommunicationDirection.INBOUND,
+        direction: MessageDirection.INBOUND,
         body: input.body,
         status: MessageStatus.RECEIVED,
         provider: 'twilio',
@@ -217,18 +217,18 @@ export class CommunicationsService {
   async sendMessage(dealershipId: string, leadId: string, actorUserId: string, payload: SendMessageDto) {
     const thread = await this.createOrGetThread(dealershipId, leadId);
     const lead = await this.ensureLeadExists(dealershipId, leadId);
-    const direction = payload.direction ?? CommunicationDirection.OUTBOUND;
+    const direction = payload.direction ?? MessageDirection.OUTBOUND;
 
     let providerMessageId: string | undefined;
     const sentAt = new Date();
     const status = MessageStatus.SENT;
 
-    if (direction === CommunicationDirection.OUTBOUND && payload.channel === CommunicationChannel.SMS) {
+    if (direction === MessageDirection.OUTBOUND && payload.channel === CommunicationChannel.SMS) {
       if (!lead.phone) throw new BadRequestException('Lead is missing phone number for SMS');
       providerMessageId = (await this.smsProvider.send({ dealershipId, to: lead.phone, body: payload.body })).providerMessageId;
     }
 
-    if (direction === CommunicationDirection.OUTBOUND && payload.channel === CommunicationChannel.EMAIL) {
+    if (direction === MessageDirection.OUTBOUND && payload.channel === CommunicationChannel.EMAIL) {
       if (!lead.email) throw new BadRequestException('Lead is missing email for EMAIL');
       providerMessageId = (await this.emailProvider.send({ to: lead.email, subject: payload.subject, body: payload.body })).providerMessageId;
     }
@@ -292,7 +292,7 @@ export class CommunicationsService {
         dealershipId,
         threadId: thread.id,
         channel: CommunicationChannel.CALL,
-        direction: payload.direction ?? CommunicationDirection.OUTBOUND,
+        direction: payload.direction ?? MessageDirection.OUTBOUND,
         body: payload.body ?? payload.outcome,
         status: MessageStatus.SENT,
         sentAt: new Date(),
