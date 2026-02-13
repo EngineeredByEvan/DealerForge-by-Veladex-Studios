@@ -5,11 +5,7 @@ export enum CommunicationChannel {
   NOTE = 'NOTE'
 }
 
-export enum CommunicationDirection {
-  OUTBOUND = 'OUTBOUND',
-  INBOUND = 'INBOUND'
-}
-
+import { MessageDirection } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
@@ -49,8 +45,8 @@ export class SendMessageDto {
   subject?: string;
 
   @IsOptional()
-  @IsEnum(CommunicationDirection)
-  direction?: CommunicationDirection;
+  @IsEnum(MessageDirection)
+  direction?: MessageDirection;
 }
 
 export class LogCallDto {
@@ -65,8 +61,8 @@ export class LogCallDto {
   durationSec?: number;
 
   @IsOptional()
-  @IsEnum(CommunicationDirection)
-  direction?: CommunicationDirection;
+  @IsEnum(MessageDirection)
+  direction?: MessageDirection;
 
   @IsString()
   @IsNotEmpty()
@@ -122,6 +118,10 @@ export class SendLeadSmsDto {
   @IsString()
   @IsNotEmpty()
   body!: string;
+
+  @IsOptional()
+  @IsEnum(MessageDirection)
+  direction?: MessageDirection;
 
   @IsOptional()
   @Transform(({ value }) => normalizeOptionalString(value))
