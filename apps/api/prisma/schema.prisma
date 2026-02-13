@@ -110,6 +110,7 @@ model Dealership {
   dealerGroup DealerGroup          @relation(fields: [dealerGroupId], references: [id])
   leads       Lead[]
   tasks       Task[]
+  messages Message[]
   appointments Appointment[]
   integrations Integration[]
   integrationEvents IntegrationEvent[]
@@ -272,7 +273,7 @@ model ConversationThread {
 }
 
 model Message {
-  id                String           @id @default(cuid())
+  id                String              @id @default(cuid())
   dealershipId      String
   threadId          String
   channel           MessageChannel
@@ -284,15 +285,18 @@ model Message {
   providerMessageId String?
   callDurationSec   Int?
   callOutcome       String?
-  dealership        Dealership       @relation(fields: [dealershipId], references: [id])
-  thread            ConversationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  actorUser         User?            @relation("MessageActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+
+  dealership        Dealership          @relation(fields: [dealershipId], references: [id])
+  thread            ConversationThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  actorUser         User?               @relation("MessageActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   @@index([dealershipId, createdAt])
   @@index([threadId, createdAt])
 }
+
 
 model CommunicationTemplate {
   id           String          @id @default(cuid())
