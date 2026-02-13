@@ -17,6 +17,7 @@ import {
   getSelectedDealershipId,
   setSelectedDealershipId
 } from '@/lib/api';
+import { canAccess, PlatformRole } from '@/lib/authorization';
 import {
   AppNotification,
   getNotificationRelativeTime,
@@ -56,16 +57,20 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const { push } = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [dealerships, setDealerships] = useState<Array<{ dealershipId: string; dealershipName: string; role: string }>>([]);
-  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [platformRole, setPlatformRole] = useState<PlatformRole>('NONE');
   const [selectedDealership, setSelectedDealership] = useState('');
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
+  const authUser = useMemo(() => ({ platformRole, dealerships }), [platformRole, dealerships]);
+
   const filteredCommands = useMemo(
-    () => commandItems.filter((item) => item.label.toLowerCase().includes(query.toLowerCase())),
-    [query]
+    () => commandItems
+      .filter((item) => canAccess(item.href, authUser, selectedDealership || null))
+      .filter((item) => item.label.toLowerCase().includes(query.toLowerCase())),
+    [authUser, query, selectedDealership]
   );
 
   useEffect(() => {
@@ -73,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     void fetchMe()
       .then((me) => {
         setDealerships(me.dealerships);
-        setIsPlatformAdmin(me.isPlatformAdmin);
+        setPlatformRole(me.platformRole);
         const active = getSelectedDealershipId() ?? me.dealerships[0]?.dealershipId ?? '';
         setSelectedDealership(active);
         if (active) setSelectedDealershipId(active);
@@ -120,13 +125,17 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
 
   if (pathname === '/login') return <>{children}</>;
 
-  const canManageTeam = isPlatformAdmin || dealerships.some((d) => d.dealershipId === selectedDealership && d.role === 'ADMIN');
+  const canManageTeam =
+    platformRole === 'ADMIN' ||
+    dealerships.some((d) => d.dealershipId === selectedDealership && d.role === 'ADMIN');
+
   const navItems = [
     ...baseNavItems,
-    ...(isPlatformAdmin ? [{ href: '/settings/dealerships', label: 'Dealership Settings' }] : []),
+    ...(platformRole === 'ADMIN' ? [{ href: '/settings/dealerships', label: 'Dealership Settings' }] : []),
     ...(canManageTeam ? [{ href: '/settings/team', label: 'Team' }] : [])
-  ];
+  ].filter((item) => canAccess(item.href, authUser, selectedDealership || null));
 
+  const isRouteAllowed = canAccess(pathname, authUser, selectedDealership || null);
   const unreadCount = notifications.filter((item) => !item.read).length;
 
   function onNotificationNavigate(item: AppNotification): void {
@@ -163,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
         <header className="topbar">
           <div className="topbar-row">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open global command palette">
-              <Input placeholder="Search leads, customers, tasks, and appointments" readOnly style={{ width: "min(620px, 56vw)", minWidth: 320, paddingRight: 64, cursor: 'pointer' }} />
+              <Input placeholder="Search leads, customers, tasks, and appointments" readOnly style={{ width: 'min(620px, 56vw)', minWidth: 320, paddingRight: 64, cursor: 'pointer' }} />
               <span className="command-shortcut">⌘K</span>
             </button>
             <Select
@@ -234,7 +243,15 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
           </div>
         </header>
         <main key={pathname} className="content page-enter">
-          {children}
+          {isRouteAllowed ? children : (
+            <div className="section-card" style={{ maxWidth: 680 }}>
+              <h2 style={{ marginBottom: 8 }}>Not authorized</h2>
+              <p style={{ color: 'var(--muted-foreground)' }}>You do not have permission to view this page.</p>
+              <div style={{ marginTop: 16 }}>
+                <Button onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
+              </div>
+            </div>
+          )}
         </main>
       </div>
       {commandOpen ? (

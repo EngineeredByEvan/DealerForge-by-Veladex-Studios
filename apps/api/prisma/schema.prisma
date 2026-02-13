@@ -144,6 +144,7 @@ model User {
   passwordHash     String
   refreshTokenHash String?
   isPlatformAdmin  Boolean              @default(false)
+  isPlatformOperator Boolean             @default(false)
   firstName        String
   lastName         String
   dealerships      UserDealershipRole[]

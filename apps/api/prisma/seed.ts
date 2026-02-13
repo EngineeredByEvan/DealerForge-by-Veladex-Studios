@@ -28,10 +28,11 @@ async function main(): Promise<void> {
   });
 
   const users = [
-    { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: true },
-    { email: 'manager@dealerforge.local', firstName: 'Manny', lastName: 'Manager', role: Role.MANAGER, isPlatformAdmin: false },
-    { email: 'sales1@dealerforge.local', firstName: 'Sally', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false },
-    { email: 'sales2@dealerforge.local', firstName: 'Sam', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false }
+    { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: true, isPlatformOperator: false },
+    { email: 'operator@dealerforge.local', firstName: 'Opal', lastName: 'Operator', role: Role.MANAGER, isPlatformAdmin: false, isPlatformOperator: true },
+    { email: 'manager@dealerforge.local', firstName: 'Manny', lastName: 'Manager', role: Role.MANAGER, isPlatformAdmin: false, isPlatformOperator: false },
+    { email: 'sales1@dealerforge.local', firstName: 'Sally', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false, isPlatformOperator: false },
+    { email: 'sales2@dealerforge.local', firstName: 'Sam', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false, isPlatformOperator: false }
   ];
 
   for (const userInput of users) {
@@ -41,14 +42,16 @@ async function main(): Promise<void> {
         firstName: userInput.firstName,
         lastName: userInput.lastName,
         passwordHash,
-        isPlatformAdmin: userInput.isPlatformAdmin
+        isPlatformAdmin: userInput.isPlatformAdmin,
+        isPlatformOperator: userInput.isPlatformOperator
       },
       create: {
         email: userInput.email,
         firstName: userInput.firstName,
         lastName: userInput.lastName,
         passwordHash,
-        isPlatformAdmin: userInput.isPlatformAdmin
+        isPlatformAdmin: userInput.isPlatformAdmin,
+        isPlatformOperator: userInput.isPlatformOperator
       }
     });
 
