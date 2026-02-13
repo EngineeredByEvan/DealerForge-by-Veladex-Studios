@@ -28,3 +28,8 @@ export type LeadScoreResult = {
   score: number;
   reasons: string[];
 };
+
+export type AiNextBestActionResult = {
+  action: string;
+  rationale: string;
+};
