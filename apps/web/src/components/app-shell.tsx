@@ -17,6 +17,7 @@ import {
   getSelectedDealershipId,
   setSelectedDealershipId
 } from '@/lib/api';
+import { initializeDealershipStore, subscribeToDealershipChange } from '@/lib/dealership-store';
 import { canAccess, PlatformRole } from '@/lib/authorization';
 import {
   AppNotification,
@@ -64,6 +65,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const [commandOpen, setCommandOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [switchingDealership, setSwitchingDealership] = useState(false);
 
   const authUser = useMemo(() => ({ platformRole, dealerships }), [platformRole, dealerships]);
 
@@ -75,6 +77,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   );
 
   useEffect(() => {
+    initializeDealershipStore();
     if (pathname === '/login') return;
     void fetchMe()
       .then((me) => {
@@ -89,6 +92,16 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
         router.push('/login');
       });
   }, [pathname, router]);
+
+
+  useEffect(() => {
+    const unsubscribe = subscribeToDealershipChange(() => {
+      setSelectedDealership(getSelectedDealershipId() ?? '');
+      setSwitchingDealership(false);
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (!selectedDealership) return;
@@ -180,8 +193,11 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             <Select
               value={selectedDealership}
               onChange={(event) => {
-                setSelectedDealership(event.target.value);
-                setSelectedDealershipId(event.target.value);
+                const nextDealershipId = event.target.value;
+                setSwitchingDealership(true);
+                setSelectedDealership(nextDealershipId);
+                setSelectedDealershipId(nextDealershipId);
+                router.replace(pathname);
               }}
               style={{ maxWidth: 280 }}
             >
@@ -192,6 +208,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                 </option>
               ))}
             </Select>
+            {switchingDealership ? <small style={{ color: 'var(--muted-foreground)' }}>Switching dealership…</small> : null}
             <div style={{ position: 'relative' }}>
               <Button variant="ghost" aria-label="Open notifications" onClick={() => setNotificationOpen((value) => !value)}>
                 🔔
@@ -244,7 +261,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             </DropdownMenu>
           </div>
         </header>
-        <main key={pathname} className="content page-enter">
+        <main key={`${pathname}:${selectedDealership}`} className="content page-enter">
           {isRouteAllowed ? children : (
             <div className="section-card" style={{ maxWidth: 680 }}>
               <h2 style={{ marginBottom: 8 }}>Not authorized</h2>

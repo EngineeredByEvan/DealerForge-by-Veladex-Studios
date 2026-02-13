@@ -4,7 +4,7 @@ import { User, UserDealershipRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
-type UserWithRoles = User & { dealerships: (UserDealershipRole & { dealership: { id: string; name: string } })[] };
+type UserWithRoles = User & { dealerships: (UserDealershipRole & { dealership: { id: string; name: string; slug: string } })[] };
 
 @Injectable()
 export class AuthService {
@@ -93,7 +93,7 @@ export class AuthService {
     isPlatformAdmin: boolean;
     isPlatformOperator: boolean;
     platformRole: 'NONE' | 'OPERATOR' | 'ADMIN';
-    dealerships: { dealershipId: string; dealershipName: string; role: string }[];
+    dealerships: { dealershipId: string; dealershipName: string; dealershipSlug: string; role: string }[];
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -103,7 +103,8 @@ export class AuthService {
             dealership: {
               select: {
                 id: true,
-                name: true
+                name: true,
+                slug: true
               }
             }
           }
@@ -128,9 +129,11 @@ export class AuthService {
       platformRole,
       dealerships: user.dealerships
         .filter((membership) => membership.isActive)
+        .sort((a, b) => a.dealership.name.localeCompare(b.dealership.name))
         .map((membership) => ({
         dealershipId: membership.dealershipId,
         dealershipName: membership.dealership.name,
+        dealershipSlug: membership.dealership.slug,
         role: membership.role
       }))
     };
@@ -143,7 +146,7 @@ export class AuthService {
         dealerships: {
           include: {
             dealership: {
-              select: { id: true, name: true }
+              select: { id: true, name: true, slug: true }
             }
           }
         }

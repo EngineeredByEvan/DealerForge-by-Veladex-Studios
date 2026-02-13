@@ -42,10 +42,12 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
     ],
     memberships: [
       { userId: 'u-admin', dealershipId: 'd-1', role: 'ADMIN', isActive: true },
+      { userId: 'u-admin', dealershipId: 'd-2', role: 'MANAGER', isActive: false },
       { userId: 'u-sales', dealershipId: 'd-1', role: 'SALES', isActive: true }
     ] as Membership[],
     dealerships: [
-      { id: 'd-1', name: 'Woodstock Mazda', slug: 'woodstock-mazda', timezone: 'UTC', status: 'ACTIVE', businessHours: null }
+      { id: 'd-1', name: 'Woodstock Mazda', slug: 'woodstock-mazda', timezone: 'UTC', status: 'ACTIVE', businessHours: null },
+      { id: 'd-2', name: 'Hidden Dealer', slug: 'hidden-dealer', timezone: 'UTC', status: 'ACTIVE', businessHours: null }
     ]
   };
 
@@ -69,7 +71,8 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
                 ...membership,
                 dealership: {
                   id: membership.dealershipId,
-                  name: 'Woodstock Mazda'
+                  name: 'Woodstock Mazda',
+                  slug: 'woodstock-mazda'
                 }
               }))
           };
@@ -160,6 +163,7 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
 
     expect(meRes.body.email).toBe('admin@test.com');
     expect(meRes.body.dealerships).toHaveLength(1);
+    expect(meRes.body.dealerships[0].dealershipSlug).toBe('woodstock-mazda');
     expect(meRes.body.platformRole).toBe('NONE');
     expect(meRes.body.isPlatformOperator).toBe(false);
   });
@@ -261,15 +265,6 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
   });
 
   it('blocks dealership admin from updating another dealership', async () => {
-    state.dealerships.push({
-      id: 'd-2',
-      name: 'Other Dealer',
-      slug: 'other-dealer',
-      timezone: 'UTC',
-      status: 'ACTIVE',
-      businessHours: null
-    });
-
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({ email: 'admin@test.com', password: 'Password123!' })
