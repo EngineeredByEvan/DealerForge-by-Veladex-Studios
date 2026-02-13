@@ -1,9 +1,10 @@
 'use client';
 
+import { clearActiveDealershipId, getActiveDealershipId, initializeDealershipStore, setActiveDealershipId } from './dealership-store';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
 const ACCESS_TOKEN_KEY = 'dealerforge_access_token';
 const REFRESH_TOKEN_KEY = 'dealerforge_refresh_token';
-const DEALERSHIP_ID_KEY = 'dealerforge_dealership_id';
 
 export type PlatformRole = 'NONE' | 'OPERATOR' | 'ADMIN';
 
@@ -16,7 +17,7 @@ export type AuthMeResponse = {
   isPlatformAdmin: boolean;
   isPlatformOperator: boolean;
   platformRole: PlatformRole;
-  dealerships: { dealershipId: string; dealershipName: string; role: string }[];
+  dealerships: { dealershipId: string; dealershipName: string; dealershipSlug: string; role: string }[];
 };
 
 export type HealthResponse = {
@@ -106,15 +107,17 @@ export function getAccessToken(): string | null {
 export function clearAuth(): void {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem(DEALERSHIP_ID_KEY);
+  clearActiveDealershipId();
 }
 
 export function setSelectedDealershipId(dealershipId: string): void {
-  localStorage.setItem(DEALERSHIP_ID_KEY, dealershipId);
+  setActiveDealershipId(dealershipId);
 }
 
 export function getSelectedDealershipId(): string | null {
-  return localStorage.getItem(DEALERSHIP_ID_KEY);
+  initializeDealershipStore();
+  const dealershipId = getActiveDealershipId();
+  return dealershipId || null;
 }
 
 export async function login(email: string, password: string): Promise<void> {
@@ -922,6 +925,18 @@ export async function updateDealershipSettings(
   if (!response.ok) throw new Error('Unable to update dealership settings');
   return (await response.json()) as Dealership;
 }
+
+export async function fetchMyDealerships(): Promise<Array<{ dealershipId: string; name: string; slug: string; role: string; status: DealershipStatus; isActive: boolean }>> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/dealerships/mine`, {
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`
+    }
+  });
+
+  if (!response.ok) throw new Error('Unable to fetch memberships');
+  return (await response.json()) as Array<{ dealershipId: string; name: string; slug: string; role: string; status: DealershipStatus; isActive: boolean }>;
+}
+
 export async function fetchDealershipsPlatform(q?: string): Promise<Dealership[]> {
   const query = q ? `?q=${encodeURIComponent(q)}` : '';
   const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships${query}`, {
@@ -1022,4 +1037,67 @@ export async function acceptInvitation(payload: {
   });
 
   if (!response.ok) throw new Error('Unable to accept invitation');
+}
+
+export type PlatformMembership = {
+  id: string;
+  userId: string;
+  dealershipId: string;
+  role: 'ADMIN' | 'MANAGER' | 'BDC' | 'SALES';
+  isActive: boolean;
+  dealership: { id: string; name: string; slug: string; status: DealershipStatus };
+};
+
+export type PlatformUser = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isPlatformAdmin: boolean;
+  isPlatformOperator: boolean;
+  dealerships: PlatformMembership[];
+};
+
+export async function fetchPlatformUsers(): Promise<PlatformUser[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/users`, {
+    headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }
+  });
+
+  if (!response.ok) throw new Error('Unable to fetch platform users');
+  return (await response.json()) as PlatformUser[];
+}
+
+export async function createPlatformMembership(
+  userId: string,
+  payload: { dealershipId: string; role: PlatformMembership['role']; isActive?: boolean }
+): Promise<PlatformMembership> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/users/${userId}/memberships`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to create membership');
+  return (await response.json()) as PlatformMembership;
+}
+
+export async function updatePlatformMembership(
+  userId: string,
+  dealershipId: string,
+  payload: { role?: PlatformMembership['role']; isActive?: boolean }
+): Promise<PlatformMembership> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/platform/users/${userId}/memberships/${dealershipId}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to update membership');
+  return (await response.json()) as PlatformMembership;
 }

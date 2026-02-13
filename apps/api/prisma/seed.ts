@@ -13,7 +13,8 @@ const plazaRooftops = [
   { name: 'Orillia Volkswagen', slug: 'orillia-volkswagen' },
   { name: 'Subaru of Orillia', slug: 'subaru-of-orillia' },
   { name: 'HWY 11 Ram', slug: 'hwy-11-ram' },
-  { name: 'Get Auto Finance', slug: 'get-auto-finance' }
+  { name: 'Get Auto Finance', slug: 'get-auto-finance' },
+  { name: 'Woodstock Mazda', slug: 'woodstock-mazda' }
 ] as const;
 
 async function main(): Promise<void> {
@@ -50,14 +51,14 @@ async function main(): Promise<void> {
     where: { dealerGroupId: dealerGroup.id },
     select: { id: true, slug: true }
   });
-  const primaryDealership = dealerships.find((dealership) => dealership.slug === 'plaza-kia');
+  const primaryDealership = dealerships.find((dealership) => dealership.slug === 'woodstock-mazda');
 
   if (!primaryDealership) {
-    throw new Error('Expected Plaza Kia dealership to exist after seed upsert');
+    throw new Error('Expected Woodstock Mazda dealership to exist after seed upsert');
   }
 
   const users = [
-    { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: true, isPlatformOperator: false },
+    { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: false, isPlatformOperator: false },
     { email: 'operator@dealerforge.local', firstName: 'Opal', lastName: 'Operator', role: Role.MANAGER, isPlatformAdmin: false, isPlatformOperator: true },
     { email: 'manager@dealerforge.local', firstName: 'Manny', lastName: 'Manager', role: Role.MANAGER, isPlatformAdmin: false, isPlatformOperator: false },
     { email: 'sales1@dealerforge.local', firstName: 'Sally', lastName: 'Sales', role: Role.SALES, isPlatformAdmin: false, isPlatformOperator: false },

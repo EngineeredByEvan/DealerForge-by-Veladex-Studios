@@ -17,8 +17,7 @@ const DEALERSHIP_INCLUDE = {
 export class DealershipsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(payload: CreateDealershipDto, user?: AuthUser, tenant?: TenantContext) {
-    this.assertCreateAccess(user, tenant);
+  async create(payload: CreateDealershipDto) {
     const dealerGroup = await this.prisma.dealerGroup.upsert({
       where: {
         name: payload.dealerGroupName ?? 'Default Dealer Group'
@@ -78,6 +77,40 @@ export class DealershipsService {
       include: DEALERSHIP_INCLUDE,
       orderBy: { createdAt: 'desc' }
     });
+  }
+
+
+  async listMine(userId: string) {
+    const memberships = await this.prisma.userDealershipRole.findMany({
+      where: {
+        userId,
+        isActive: true
+      },
+      include: {
+        dealership: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            status: true
+          }
+        }
+      },
+      orderBy: {
+        dealership: {
+          name: 'asc'
+        }
+      }
+    });
+
+    return memberships.map((membership) => ({
+      dealershipId: membership.dealershipId,
+      name: membership.dealership.name,
+      slug: membership.dealership.slug,
+      status: membership.dealership.status,
+      role: membership.role,
+      isActive: membership.isActive
+    }));
   }
 
   async update(dealershipId: string, payload: UpdateDealershipDto) {
@@ -190,15 +223,6 @@ export class DealershipsService {
   }
 
 
-  private assertCreateAccess(user?: AuthUser, tenant?: TenantContext): void {
-    if (!user || !tenant) {
-      throw new ForbiddenException('Authenticated dealership admin context is required');
-    }
-
-    if (user.platformRole !== 'NONE' || tenant.role !== Role.ADMIN) {
-      throw new ForbiddenException('Only dealership admins are allowed to create dealerships');
-    }
-  }
 
   private assertSettingsAccess(dealershipId: string, user: AuthUser, tenant?: TenantContext): void {
     if (user.platformRole === 'ADMIN' || user.platformRole === 'OPERATOR') {
