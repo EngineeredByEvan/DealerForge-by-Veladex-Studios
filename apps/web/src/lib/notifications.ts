@@ -1,8 +1,8 @@
 'use client';
 
-import { Appointment, Lead } from '@/lib/api';
+import { Appointment, Lead, Message } from '@/lib/api';
 
-export type NotificationType = 'lead' | 'appointment' | 'integration';
+export type NotificationType = 'lead' | 'appointment' | 'integration' | 'message';
 
 export type AppNotification = {
   id: string;
@@ -172,4 +172,29 @@ export function pushCsvImportNotification(
 
 export function getNotificationRelativeTime(createdAt: string): string {
   return toRelativeTime(createdAt);
+}
+
+
+export function ingestMessageNotifications(dealershipId: string, messages: Message[]): AppNotification[] {
+  const outbound = messages.filter((message) => {
+    if (message.direction !== 'OUTBOUND') return false;
+    const created = new Date(message.createdAt).getTime();
+    return Date.now() - created <= 1000 * 60 * 60 * 24;
+  });
+
+  const items: AppNotification[] = outbound.map((message) => ({
+    id: `message:${message.id}`,
+    type: 'message',
+    title: 'Message sent',
+    message: `${message.channel} • ${message.body.slice(0, 90)}`,
+    ctaLabel: 'Open lead',
+    href: message.thread?.leadId ? `/leads/${message.thread.leadId}` : '/leads',
+    entityId: message.id,
+    createdAt: message.createdAt,
+    read: false
+  }));
+
+  const merged = upsertNotifications(dealershipId, items);
+  emitUpdate();
+  return merged;
 }

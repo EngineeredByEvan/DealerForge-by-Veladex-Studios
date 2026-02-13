@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "test": "echo 'No tests for web yet'",
+    "test": "node ./test/lead-detail.smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

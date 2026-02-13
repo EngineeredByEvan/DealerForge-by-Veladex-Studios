@@ -46,6 +46,18 @@ enum ActivityType {
   OTHER
 }
 
+enum MessageChannel {
+  SMS
+  EMAIL
+  CALL
+  NOTE
+}
+
+enum MessageDirection {
+  OUTBOUND
+  INBOUND
+}
+
 enum TaskStatus {
   OPEN
   DONE
@@ -103,6 +115,8 @@ model Dealership {
   auditLogs    AuditLog[]
   users       UserDealershipRole[]
   invitations Invitation[]
+  conversationThreads ConversationThread[]
+  communicationTemplates CommunicationTemplate[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 }
@@ -139,6 +153,8 @@ model User {
   activities       Activity[]
   auditLogs        AuditLog[]
   eventLogs        EventLog[]
+  sentMessages     Message[]       @relation("MessageActorUser")
+  createdCommunicationTemplates CommunicationTemplate[] @relation("CommunicationTemplateCreatedBy")
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 }
@@ -225,6 +241,7 @@ model Lead {
   appointments      Appointment[]
   integrationEvents IntegrationEvent[]
   aiRequestLogs AIRequestLog[]
+  conversationThreads ConversationThread[]
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
@@ -233,6 +250,60 @@ model Lead {
   @@index([dealershipId, assignedToUserId])
   @@index([dealershipId, sourceId])
   @@index([dealershipId, lastActivityAt])
+}
+
+model ConversationThread {
+  id           String    @id @default(cuid())
+  dealershipId String
+  leadId       String
+  dealership   Dealership @relation(fields: [dealershipId], references: [id])
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  createdAt    DateTime  @default(now())
+
+  @@unique([dealershipId, leadId])
+  @@index([dealershipId, createdAt])
+  @@index([leadId, createdAt])
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  dealershipId      String
+  threadId          String
+  channel           MessageChannel
+  direction         MessageDirection
+  body              String
+  status            String
+  sentAt            DateTime?
+  actorUserId       String?
+  providerMessageId String?
+  callDurationSec   Int?
+  callOutcome       String?
+  dealership        Dealership       @relation(fields: [dealershipId], references: [id])
+  thread            ConversationThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  actorUser         User?            @relation("MessageActorUser", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([dealershipId, createdAt])
+  @@index([threadId, createdAt])
+}
+
+model CommunicationTemplate {
+  id           String          @id @default(cuid())
+  dealershipId String
+  channel      MessageChannel
+  name         String
+  subject      String?
+  body         String
+  createdBy    String
+  dealership   Dealership      @relation(fields: [dealershipId], references: [id])
+  createdByUser User           @relation("CommunicationTemplateCreatedBy", fields: [createdBy], references: [id])
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([dealershipId, channel])
+  @@unique([dealershipId, channel, name])
 }
 
 model Integration {

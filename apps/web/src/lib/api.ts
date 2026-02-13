@@ -287,6 +287,111 @@ export async function createLeadActivity(
 }
 
 
+
+export type MessageChannel = 'SMS' | 'EMAIL' | 'CALL' | 'NOTE';
+export type MessageDirection = 'OUTBOUND' | 'INBOUND';
+
+export type ConversationThread = {
+  id: string;
+  dealershipId: string;
+  leadId: string;
+  createdAt: string;
+};
+
+export type Message = {
+  id: string;
+  dealershipId: string;
+  threadId: string;
+  channel: MessageChannel;
+  direction: MessageDirection;
+  body: string;
+  status: string;
+  sentAt: string | null;
+  actorUserId: string | null;
+  providerMessageId: string | null;
+  callDurationSec?: number | null;
+  callOutcome?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  actorUser?: { id: string; firstName: string; lastName: string; email: string } | null;
+  thread?: { id: string; leadId: string };
+};
+
+export type CommunicationTemplate = {
+  id: string;
+  dealershipId: string;
+  channel: MessageChannel;
+  name: string;
+  subject: string | null;
+  body: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function createOrGetThread(leadId: string): Promise<ConversationThread> {
+  const response = await apiRequest('/communications/threads', {
+    method: 'POST',
+    body: JSON.stringify({ leadId })
+  });
+
+  if (!response.ok) throw new Error('Unable to create thread');
+  return (await response.json()) as ConversationThread;
+}
+
+export async function fetchMessagesByLead(leadId: string): Promise<Message[]> {
+  const response = await apiRequest(`/communications/messages?leadId=${encodeURIComponent(leadId)}`);
+  if (!response.ok) throw new Error('Unable to fetch messages');
+  return (await response.json()) as Message[];
+}
+
+export async function sendMessage(
+  leadId: string,
+  payload: { channel: Extract<MessageChannel, 'SMS' | 'EMAIL' | 'NOTE'>; body: string; subject?: string }
+): Promise<Message> {
+  const response = await apiRequest(`/communications/leads/${leadId}/send`, {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, direction: 'OUTBOUND' })
+  });
+
+  if (!response.ok) throw new Error('Unable to send message');
+  return (await response.json()) as Message;
+}
+
+export async function logCall(
+  leadId: string,
+  payload: { durationSec: number; outcome: string; body?: string }
+): Promise<Message> {
+  const response = await apiRequest(`/communications/leads/${leadId}/calls`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to log call');
+  return (await response.json()) as Message;
+}
+
+export async function fetchTemplates(): Promise<CommunicationTemplate[]> {
+  const response = await apiRequest('/communications/templates');
+  if (!response.ok) throw new Error('Unable to fetch templates');
+  return (await response.json()) as CommunicationTemplate[];
+}
+
+export async function createTemplate(payload: {
+  channel: MessageChannel;
+  name: string;
+  subject?: string;
+  body: string;
+}): Promise<CommunicationTemplate> {
+  const response = await apiRequest('/communications/templates', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to create template');
+  return (await response.json()) as CommunicationTemplate;
+}
+
 export type ReportOverviewPeriod = {
   leads: number;
   appointments: number;

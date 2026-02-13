@@ -1,19 +1,24 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  ActivityType,
   Appointment,
+  CommunicationTemplate,
   Lead,
+  Message,
   Task,
   createAppointment,
-  createLeadActivity,
+  createOrGetThread,
   createTask,
   fetchAppointments,
   fetchLeadActivities,
   fetchLeadById,
-  fetchTasks
+  fetchMessagesByLead,
+  fetchTasks,
+  fetchTemplates,
+  logCall,
+  sendMessage
 } from '@/lib/api';
 import { AiPanel } from '@/components/leads/ai-panel';
 
@@ -23,25 +28,16 @@ type LeadDetailPageProps = {
   };
 };
 
-const ACTIVITY_TYPE_OPTIONS: ActivityType[] = [
-  'CALL',
-  'EMAIL',
-  'SMS',
-  'NOTE',
-  'VISIT',
-  'TEST_DRIVE',
-  'OTHER'
-];
+type TimelineItem =
+  | { kind: 'activity'; id: string; createdAt: string; payload: Activity }
+  | { kind: 'message'; id: string; createdAt: string; payload: Message };
 
 export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Element {
   const [lead, setLead] = useState<Lead | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [activityType, setActivityType] = useState<ActivityType>('CALL');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [outcome, setOutcome] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDueAt, setTaskDueAt] = useState('');
@@ -50,20 +46,33 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [appointmentStartAt, setAppointmentStartAt] = useState('');
   const [appointmentEndAt, setAppointmentEndAt] = useState('');
   const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
+  const [composeChannel, setComposeChannel] = useState<'SMS' | 'EMAIL'>('SMS');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeSubmitting, setComposeSubmitting] = useState(false);
+  const [callDurationSec, setCallDurationSec] = useState(300);
+  const [callOutcome, setCallOutcome] = useState('Connected - follow up requested');
+  const [callNotes, setCallNotes] = useState('');
+  const [callSubmitting, setCallSubmitting] = useState(false);
 
   useEffect(() => {
     async function load(): Promise<void> {
       try {
-        const [leadResult, activityResult, taskResult, appointmentResult] = await Promise.all([
+        const [leadResult, activityResult, messageResult, taskResult, appointmentResult, templateResult] = await Promise.all([
           fetchLeadById(params.id),
           fetchLeadActivities(params.id),
+          fetchMessagesByLead(params.id),
           fetchTasks({ leadId: params.id }),
-          fetchAppointments()
+          fetchAppointments(),
+          fetchTemplates()
         ]);
+        await createOrGetThread(params.id);
         setLead(leadResult);
         setActivities(activityResult);
+        setMessages(messageResult);
         setTasks(taskResult);
         setAppointments(appointmentResult.filter((appointment) => appointment.lead_id === params.id));
+        setTemplates(templateResult);
       } catch {
         setError('Unable to load lead details');
       }
@@ -72,42 +81,59 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     void load();
   }, [params.id]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  const timeline = useMemo<TimelineItem[]>(
+    () =>
+      [
+        ...activities.map((activity) => ({ kind: 'activity' as const, id: `activity-${activity.id}`, createdAt: activity.createdAt, payload: activity })),
+        ...messages.map((message) => ({ kind: 'message' as const, id: `message-${message.id}`, createdAt: message.createdAt, payload: message }))
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [activities, messages]
+  );
+
+  async function handleComposeSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!subject.trim()) {
-      setError('Subject is required to log an activity');
+    if (!composeBody.trim()) {
+      setError('Message body is required');
       return;
     }
 
     try {
-      setSubmitting(true);
+      setComposeSubmitting(true);
       setError(null);
-      const created = await createLeadActivity(params.id, {
-        type: activityType,
-        subject,
-        body,
-        outcome
+      const created = await sendMessage(params.id, {
+        channel: composeChannel,
+        subject: composeChannel === 'EMAIL' ? composeSubject : undefined,
+        body: composeBody
       });
-      setActivities((previous) => [created, ...previous]);
-      setLead((previous) =>
-        previous
-          ? {
-              ...previous,
-              lastActivityAt: created.createdAt
-            }
-          : previous
-      );
-      setSubject('');
-      setBody('');
-      setOutcome('');
-      setActivityType('CALL');
+      setMessages((previous) => [created, ...previous]);
+      setComposeBody('');
+      setComposeSubject('');
     } catch {
-      setError('Unable to save activity');
+      setError('Unable to send message');
     } finally {
-      setSubmitting(false);
+      setComposeSubmitting(false);
     }
   }
 
+  async function handleCallLogSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    try {
+      setCallSubmitting(true);
+      setError(null);
+      const created = await logCall(params.id, {
+        durationSec: callDurationSec,
+        outcome: callOutcome,
+        body: callNotes
+      });
+      setMessages((previous) => [created, ...previous]);
+      setCallNotes('');
+    } catch {
+      setError('Unable to log call');
+    } finally {
+      setCallSubmitting(false);
+    }
+  }
 
   async function handleTaskCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -134,8 +160,6 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     }
   }
 
-
-
   async function handleAppointmentCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
 
@@ -157,187 +181,135 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     }
   }
 
-  if (error && !lead) {
-    return <main>{error}</main>;
-  }
-
-  if (!lead) {
-    return <main>Loading lead...</main>;
-  }
+  if (error && !lead) return <main>{error}</main>;
+  if (!lead) return <main>Loading lead...</main>;
 
   return (
     <main>
       <h1>Lead Detail</h1>
       {error ? <p>{error}</p> : null}
-      <p>ID: {lead.id}</p>
       <p>Name: {`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || 'Unknown'}</p>
       <p>Status: {lead.status}</p>
-      <p>Email: {lead.email ?? '—'}</p>
-      <p>Phone: {lead.phone ?? '—'}</p>
-      <p>Source: {lead.source?.name ?? '—'}</p>
-      <p>Vehicle interest: {lead.vehicleInterest ?? '—'}</p>
-      <p>Assigned to: {lead.assignedToUserId ?? 'Unassigned'}</p>
-      <p>Last activity: {lead.lastActivityAt ?? '—'}</p>
-
 
       <AiPanel leadId={lead.id} />
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <a href="#quick-activity">Quick add activity</a>
-        <a href="#quick-task">Quick add task</a>
-        <a href="#quick-appointment">Quick add appointment</a>
-      </div>
-
       <section>
-        <h2>Timeline</h2>
-        {activities.length === 0 ? <p>No activities logged yet.</p> : null}
+        <h2>Activity timeline</h2>
+        {timeline.length === 0 ? <p>No timeline items yet.</p> : null}
         <ul>
-          {activities.map((activity) => (
-            <li key={activity.id}>
-              <strong>{activity.type}</strong> — {activity.subject}
-              <br />
-              <small>
-                {new Date(activity.createdAt).toLocaleString()} by{' '}
-                {activity.createdByUser
-                  ? `${activity.createdByUser.firstName} ${activity.createdByUser.lastName}`
-                  : 'Unknown user'}
-              </small>
-              {activity.body ? <p>{activity.body}</p> : null}
-              {activity.outcome ? <p>Outcome: {activity.outcome}</p> : null}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section id="quick-activity">
-        <h2>Log Activity</h2>
-        <form onSubmit={(event) => void handleSubmit(event)}>
-          <label htmlFor="activityType">Type</label>
-          <select
-            id="activityType"
-            value={activityType}
-            onChange={(event) => setActivityType(event.target.value as ActivityType)}
-          >
-            {ACTIVITY_TYPE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-
-          <label htmlFor="subject">Subject</label>
-          <input
-            id="subject"
-            type="text"
-            value={subject}
-            onChange={(event) => setSubject(event.target.value)}
-            required
-          />
-
-          <label htmlFor="body">Body</label>
-          <textarea id="body" value={body} onChange={(event) => setBody(event.target.value)} />
-
-          <label htmlFor="outcome">Outcome</label>
-          <input
-            id="outcome"
-            type="text"
-            value={outcome}
-            onChange={(event) => setOutcome(event.target.value)}
-          />
-
-          <button type="submit" disabled={submitting}>
-            {submitting ? 'Saving...' : 'Log Activity'}
-          </button>
-        </form>
-      </section>
-
-      <section id="quick-task">
-        <h2>Tasks</h2>
-        <form onSubmit={(event) => void handleTaskCreate(event)}>
-          <label htmlFor="taskTitle">Task title</label>
-          <input
-            id="taskTitle"
-            type="text"
-            value={taskTitle}
-            onChange={(event) => setTaskTitle(event.target.value)}
-            required
-          />
-
-          <label htmlFor="taskDueAt">Due date/time (ISO)</label>
-          <input
-            id="taskDueAt"
-            type="text"
-            placeholder="2026-02-01T15:00:00.000Z"
-            value={taskDueAt}
-            onChange={(event) => setTaskDueAt(event.target.value)}
-          />
-
-          <button type="submit" disabled={taskSubmitting}>
-            {taskSubmitting ? 'Saving task...' : 'Create Task'}
-          </button>
-        </form>
-
-        {tasks.length === 0 ? <p>No tasks for this lead yet.</p> : null}
-        <ul>
-          {tasks.map((task) => (
-            <li key={task.id}>
-              <strong>{task.title}</strong> — {task.status}
-              <br />
-              <small>Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : '—'}</small>
-              {task.description ? <p>{task.description}</p> : null}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-
-      <section id="quick-appointment">
-        <h2>Appointments</h2>
-        <form onSubmit={(event) => void handleAppointmentCreate(event)}>
-          <label htmlFor="appointmentStartAt">Start (ISO)</label>
-          <input
-            id="appointmentStartAt"
-            type="text"
-            placeholder="2026-02-01T15:00:00.000Z"
-            value={appointmentStartAt}
-            onChange={(event) => setAppointmentStartAt(event.target.value)}
-            required
-          />
-
-          <label htmlFor="appointmentEndAt">End (ISO)</label>
-          <input
-            id="appointmentEndAt"
-            type="text"
-            placeholder="2026-02-01T16:00:00.000Z"
-            value={appointmentEndAt}
-            onChange={(event) => setAppointmentEndAt(event.target.value)}
-            required
-          />
-
-          <button type="submit" disabled={appointmentSubmitting}>
-            {appointmentSubmitting ? 'Saving appointment...' : 'Book Appointment'}
-          </button>
-        </form>
-
-        {appointments.length === 0 ? <p>No appointments for this lead yet.</p> : null}
-        <ul>
-          {appointments.map((appointment) => (
-            <li key={appointment.id}>
-              <strong>{appointment.status}</strong>
-              <br />
-              <small>
-                {new Date(appointment.start_at).toLocaleString()} -{' '}
-                {new Date(appointment.end_at).toLocaleString()}
-              </small>
-              {appointment.note ? <p>{appointment.note}</p> : null}
+          {timeline.map((item) => (
+            <li key={item.id}>
+              {item.kind === 'message' ? (
+                <>
+                  <strong>{item.payload.channel}</strong> ({item.payload.direction}) — {item.payload.body}
+                  <br />
+                  <small>
+                    {new Date(item.createdAt).toLocaleString()} {item.payload.status ? `• ${item.payload.status}` : ''}
+                  </small>
+                </>
+              ) : (
+                <>
+                  <strong>{item.payload.type}</strong> — {item.payload.subject}
+                  <br />
+                  <small>{new Date(item.createdAt).toLocaleString()}</small>
+                </>
+              )}
             </li>
           ))}
         </ul>
       </section>
 
       <section>
-        <h2>AI Panel</h2>
-        <p>Placeholder: lead summary, score, and next best action.</p>
+        <h2>Compose message</h2>
+        <form onSubmit={handleComposeSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
+          <label>
+            Channel
+            <select value={composeChannel} onChange={(event) => setComposeChannel(event.target.value as 'SMS' | 'EMAIL')}>
+              <option value="SMS">SMS</option>
+              <option value="EMAIL">Email</option>
+            </select>
+          </label>
+          <label>
+            Template
+            <select
+              onChange={(event) => {
+                const template = templates.find((item) => item.id === event.target.value);
+                if (!template) return;
+                setComposeChannel(template.channel === 'EMAIL' ? 'EMAIL' : 'SMS');
+                setComposeBody(template.body);
+                setComposeSubject(template.subject ?? '');
+              }}
+              defaultValue=""
+            >
+              <option value="">Pick template</option>
+              {templates
+                .filter((template) => template.channel === 'SMS' || template.channel === 'EMAIL')
+                .map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {composeChannel === 'EMAIL' ? (
+            <label>
+              Subject
+              <input value={composeSubject} onChange={(event) => setComposeSubject(event.target.value)} />
+            </label>
+          ) : null}
+          <label>
+            Message
+            <textarea value={composeBody} onChange={(event) => setComposeBody(event.target.value)} rows={4} />
+          </label>
+          <button type="submit" disabled={composeSubmitting}>{composeSubmitting ? 'Sending...' : 'Send message'}</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Log call</h2>
+        <form onSubmit={handleCallLogSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
+          <label>
+            Duration (seconds)
+            <input type="number" min={0} value={callDurationSec} onChange={(event) => setCallDurationSec(Number(event.target.value))} />
+          </label>
+          <label>
+            Outcome
+            <input value={callOutcome} onChange={(event) => setCallOutcome(event.target.value)} />
+          </label>
+          <label>
+            Notes
+            <textarea value={callNotes} onChange={(event) => setCallNotes(event.target.value)} rows={3} />
+          </label>
+          <button type="submit" disabled={callSubmitting}>{callSubmitting ? 'Logging...' : 'Log call'}</button>
+        </form>
+      </section>
+
+      <section>
+        <h2 id="quick-task">Quick add task</h2>
+        <form onSubmit={handleTaskCreate} style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
+          <input placeholder="Task title" value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} />
+          <input type="datetime-local" value={taskDueAt} onChange={(event) => setTaskDueAt(event.target.value)} />
+          <button type="submit" disabled={taskSubmitting}>{taskSubmitting ? 'Creating task...' : 'Create task'}</button>
+        </form>
+      </section>
+
+      <section>
+        <h2 id="quick-appointment">Quick add appointment</h2>
+        <form onSubmit={handleAppointmentCreate} style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
+          <input type="datetime-local" value={appointmentStartAt} onChange={(event) => setAppointmentStartAt(event.target.value)} />
+          <input type="datetime-local" value={appointmentEndAt} onChange={(event) => setAppointmentEndAt(event.target.value)} />
+          <button type="submit" disabled={appointmentSubmitting}>{appointmentSubmitting ? 'Scheduling...' : 'Create appointment'}</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Lead tasks</h2>
+        <ul>{tasks.map((task) => <li key={task.id}>{task.title}</li>)}</ul>
+      </section>
+
+      <section>
+        <h2>Lead appointments</h2>
+        <ul>{appointments.map((appointment) => <li key={appointment.id}>{new Date(appointment.start_at).toLocaleString()}</li>)}</ul>
       </section>
     </main>
   );
