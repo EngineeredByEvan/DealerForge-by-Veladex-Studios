@@ -50,8 +50,8 @@ export class SendMessageDto {
   subject?: string;
 
   @IsOptional()
-  @IsEnum(CommunicationDirection)
-  direction?: CommunicationDirection;
+  @IsEnum(MessageDirection)
+  direction?: MessageDirection;
 }
 
 export class LogCallDto {
@@ -66,8 +66,8 @@ export class LogCallDto {
   durationSec?: number;
 
   @IsOptional()
-  @IsEnum(CommunicationDirection)
-  direction?: CommunicationDirection;
+  @IsEnum(MessageDirection)
+  direction?: MessageDirection;
 
   @IsString()
   @IsNotEmpty()
