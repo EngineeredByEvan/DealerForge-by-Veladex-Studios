@@ -1,138 +1,202 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AppointmentStatus, LeadStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { QueryEventLogsDto } from './reports.dto';
+import {
+  QueryBreakdownDto,
+  QueryEventLogsDto,
+  QuerySummaryDto,
+  QueryTrendsDto,
+  ReportDimension
+} from './reports.dto';
 
-type RangeWindow = {
-  start: Date;
-  end: Date;
-};
-
-type PeriodKey = 'today' | 'week' | 'month';
-
-type Counts = {
-  leads: number;
-  appointments: number;
-  shows: number;
-  sold: number;
+type LeadSnapshot = {
+  leadId: string;
+  source: string | null;
+  assignedUserId: string | null;
+  status: string | null;
+  leadType: string | null;
 };
 
 @Injectable()
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getOverview(dealershipId: string) {
-    const now = new Date();
+  async getSummary(dealershipId: string, query: QuerySummaryDto) {
+    const range = this.parseDateRange(query.start, query.end);
+    const leads = await this.getFilteredLeads(dealershipId, range, query);
+    const leadIds = new Set(leads.map((lead) => lead.leadId));
 
-    const windows: Record<PeriodKey, RangeWindow> = {
-      today: this.getTodayWindow(now),
-      week: this.getWeekWindow(now),
-      month: this.getMonthWindow(now)
-    };
-
-    const periods = await Promise.all(
-      (Object.keys(windows) as PeriodKey[]).map(async (period) => {
-        const window = windows[period];
-
-        const [leads, appointments, shows, sold] = await Promise.all([
-          this.prisma.lead.count({
-            where: {
-              dealershipId,
-              createdAt: {
-                gte: window.start,
-                lte: window.end
-              }
-            }
-          }),
-          this.prisma.appointment.count({
-            where: {
-              dealershipId,
-              createdAt: {
-                gte: window.start,
-                lte: window.end
-              }
-            }
-          }),
-          this.prisma.appointment.count({
-            where: {
-              dealershipId,
-              status: AppointmentStatus.SHOWED,
-              createdAt: {
-                gte: window.start,
-                lte: window.end
-              }
-            }
-          }),
-          this.prisma.lead.count({
-            where: {
-              dealershipId,
-              status: LeadStatus.SOLD,
-              createdAt: {
-                gte: window.start,
-                lte: window.end
-              }
-            }
-          })
-        ]);
-
-        return [period, { leads, appointments, shows, sold } satisfies Counts] as const;
-      })
-    );
-
-    return {
-      today: periods.find(([period]) => period === 'today')![1],
-      week: periods.find(([period]) => period === 'week')![1],
-      month: periods.find(([period]) => period === 'month')![1]
-    };
-  }
-
-  async getResponseTime(dealershipId: string) {
-    const leads = await this.prisma.lead.findMany({
-      where: { dealershipId },
-      select: { id: true, createdAt: true }
+    const appointmentCreated = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'appointment_created'
+      },
+      select: {
+        entityId: true,
+        payload: true,
+        occurredAt: true
+      }
     });
 
-    if (!leads.length) {
-      return {
-        averageMinutes: null,
-        sampleSize: 0
-      };
+    const appointmentLeadMap = new Map<string, string>();
+    for (const event of appointmentCreated) {
+      const leadId = this.readPayloadString(event.payload, 'leadId');
+      if (leadId) {
+        appointmentLeadMap.set(event.entityId, leadId);
+      }
     }
 
-    const firstActivities = await Promise.all(
-      leads.map(async (lead) => {
-        const activity = await this.prisma.activity.findFirst({
-          where: { leadId: lead.id },
-          orderBy: { createdAt: 'asc' },
-          select: { createdAt: true }
-        });
+    const appointmentsSet = appointmentCreated.filter((event) => {
+      const leadId = appointmentLeadMap.get(event.entityId);
+      return Boolean(leadId && leadIds.has(leadId) && this.inRange(event.occurredAt, range));
+    }).length;
 
-        if (!activity) {
-          return null;
+    const showEvents = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'appointment_status_changed',
+        occurredAt: {
+          gte: range.start,
+          lte: range.end
         }
+      },
+      select: {
+        entityId: true,
+        payload: true
+      }
+    });
 
-        const diffMs = activity.createdAt.getTime() - lead.createdAt.getTime();
-        return Math.max(0, diffMs / 60000);
+    const showedIds = new Set(
+      showEvents
+        .filter((event) => this.readPayloadString(event.payload, 'status') === 'SHOWED')
+        .filter((event) => {
+          const leadId = appointmentLeadMap.get(event.entityId);
+          return Boolean(leadId && leadIds.has(leadId));
+        })
+        .map((event) => event.entityId)
+    );
+
+    const soldEvents = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'lead_status_changed',
+        occurredAt: {
+          gte: range.start,
+          lte: range.end
+        }
+      },
+      select: {
+        entityId: true,
+        payload: true
+      }
+    });
+
+    const soldLeadIds = new Set(
+      soldEvents
+        .filter((event) => this.readPayloadString(event.payload, 'status') === 'SOLD')
+        .filter((event) => leadIds.has(event.entityId))
+        .map((event) => event.entityId)
+    );
+
+    return this.toSummary(leads.length, appointmentsSet, showedIds.size, soldLeadIds.size);
+  }
+
+  async getBreakdown(dealershipId: string, query: QueryBreakdownDto) {
+    const range = this.parseDateRange(query.start, query.end);
+    const leads = await this.getFilteredLeads(dealershipId, range, query);
+
+    const groups = new Map<string, Set<string>>();
+
+    for (const lead of leads) {
+      const key = this.getLeadDimensionValue(lead, query.dimension);
+      const ids = groups.get(key) ?? new Set<string>();
+      ids.add(lead.leadId);
+      groups.set(key, ids);
+    }
+
+    const entries = await Promise.all(
+      Array.from(groups.entries()).map(async ([key, leadIdSet]) => {
+        const summary = await this.computeSummaryForLeadIds(dealershipId, range, leadIdSet);
+
+        return {
+          key,
+          ...summary
+        };
       })
     );
 
-    const validDiffs = firstActivities.filter((value): value is number => value !== null);
-
-    if (!validDiffs.length) {
-      return {
-        averageMinutes: null,
-        sampleSize: 0
-      };
-    }
-
-    const averageMinutes = validDiffs.reduce((sum, value) => sum + value, 0) / validDiffs.length;
-
-    return {
-      averageMinutes: Number(averageMinutes.toFixed(2)),
-      sampleSize: validDiffs.length
-    };
+    return entries.sort((a, b) => b.total_leads - a.total_leads || a.key.localeCompare(b.key));
   }
 
+  async getTrends(dealershipId: string, query: QueryTrendsDto) {
+    const range = this.parseDateRange(query.start, query.end);
+    const leads = await this.getFilteredLeads(dealershipId, range, query);
+    const leadIds = new Set(leads.map((lead) => lead.leadId));
+
+    if (!leadIds.size) {
+      return [];
+    }
+
+
+    const appointmentCreated = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'appointment_created'
+      },
+      select: {
+        entityId: true,
+        payload: true,
+        occurredAt: true
+      }
+    });
+
+    const appointmentLeadMap = new Map<string, string>();
+    for (const event of appointmentCreated) {
+      const leadId = this.readPayloadString(event.payload, 'leadId');
+      if (leadId) {
+        appointmentLeadMap.set(event.entityId, leadId);
+      }
+    }
+
+    if (query.metric === 'appointments') {
+      const values = appointmentCreated
+        .filter((event) => {
+          const leadId = appointmentLeadMap.get(event.entityId);
+          return Boolean(leadId && leadIds.has(leadId) && this.inRange(event.occurredAt, range));
+        })
+        .map((event) => event.occurredAt);
+
+      return this.bucketTimeSeries(values);
+    }
+
+    if (query.metric === 'sold') {
+      const soldEvents = await this.prisma.eventLog.findMany({
+        where: {
+          dealershipId,
+          eventType: 'lead_status_changed',
+          occurredAt: {
+            gte: range.start,
+            lte: range.end
+          }
+        },
+        select: {
+          entityId: true,
+          payload: true,
+          occurredAt: true
+        }
+      });
+
+      const values = soldEvents
+        .filter((event) => this.readPayloadString(event.payload, 'status') === 'SOLD')
+        .filter((event) => leadIds.has(event.entityId))
+        .map((event) => event.occurredAt);
+
+      return this.bucketTimeSeries(values);
+    }
+
+    const values = leads.map((lead) => lead.createdAt);
+    return this.bucketTimeSeries(values);
+  }
 
   async listEventLogs(dealershipId: string, query: QueryEventLogsDto) {
     const startAt = query.startAt ? new Date(query.startAt) : undefined;
@@ -159,39 +223,212 @@ export class ReportsService {
       take: 200
     });
   }
-  private getTodayWindow(now: Date): RangeWindow {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
 
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    end.setMilliseconds(end.getMilliseconds() - 1);
+  private async getFilteredLeads(
+    dealershipId: string,
+    range: { start: Date; end: Date },
+    query: { source?: string; assignedUser?: string; status?: string; leadType?: string }
+  ): Promise<Array<LeadSnapshot & { createdAt: Date }>> {
+    const leadEvents = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'lead_created',
+        occurredAt: {
+          gte: range.start,
+          lte: range.end
+        }
+      },
+      select: {
+        entityId: true,
+        payload: true,
+        occurredAt: true
+      },
+      orderBy: {
+        occurredAt: 'asc'
+      }
+    });
 
-    return { start, end };
+    const snapshots = new Map<string, LeadSnapshot & { createdAt: Date }>();
+    for (const event of leadEvents) {
+      if (!snapshots.has(event.entityId)) {
+        snapshots.set(event.entityId, {
+          leadId: event.entityId,
+          source: this.readPayloadString(event.payload, 'source'),
+          assignedUserId: this.readPayloadString(event.payload, 'assignedToUserId'),
+          status: this.readPayloadString(event.payload, 'status'),
+          leadType: this.readPayloadString(event.payload, 'leadType'),
+          createdAt: event.occurredAt
+        });
+      }
+    }
+
+    return Array.from(snapshots.values()).filter((lead) => {
+      if (query.source && !this.equalsIgnoreCase(lead.source, query.source)) return false;
+      if (query.assignedUser && lead.assignedUserId !== query.assignedUser) return false;
+      if (query.status && !this.equalsIgnoreCase(lead.status, query.status)) return false;
+      if (query.leadType && !this.equalsIgnoreCase(lead.leadType, query.leadType)) return false;
+      return true;
+    });
   }
 
-  private getWeekWindow(now: Date): RangeWindow {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
+  private async computeSummaryForLeadIds(dealershipId: string, range: { start: Date; end: Date }, leadIdSet: Set<string>) {
+    if (!leadIdSet.size) {
+      return this.toSummary(0, 0, 0, 0);
+    }
 
-    const day = start.getDay();
-    const diffToMonday = (day + 6) % 7;
-    start.setDate(start.getDate() - diffToMonday);
+    const appointmentCreated = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'appointment_created'
+      },
+      select: {
+        entityId: true,
+        payload: true,
+        occurredAt: true
+      }
+    });
 
-    const end = new Date(start);
-    end.setDate(end.getDate() + 7);
-    end.setMilliseconds(end.getMilliseconds() - 1);
+    const appointmentLeadMap = new Map<string, string>();
+    for (const event of appointmentCreated) {
+      const leadId = this.readPayloadString(event.payload, 'leadId');
+      if (leadId) {
+        appointmentLeadMap.set(event.entityId, leadId);
+      }
+    }
 
-    return { start, end };
+    const appointmentsSet = appointmentCreated.filter((event) => {
+      const leadId = appointmentLeadMap.get(event.entityId);
+      return Boolean(leadId && leadIdSet.has(leadId) && this.inRange(event.occurredAt, range));
+    }).length;
+
+    const showEvents = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'appointment_status_changed',
+        occurredAt: {
+          gte: range.start,
+          lte: range.end
+        }
+      },
+      select: {
+        entityId: true,
+        payload: true
+      }
+    });
+
+    const showedIds = new Set(
+      showEvents
+        .filter((event) => this.readPayloadString(event.payload, 'status') === 'SHOWED')
+        .filter((event) => {
+          const leadId = appointmentLeadMap.get(event.entityId);
+          return Boolean(leadId && leadIdSet.has(leadId));
+        })
+        .map((event) => event.entityId)
+    );
+
+    const soldEvents = await this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: 'lead_status_changed',
+        occurredAt: {
+          gte: range.start,
+          lte: range.end
+        }
+      },
+      select: {
+        entityId: true,
+        payload: true
+      }
+    });
+
+    const soldLeadIds = new Set(
+      soldEvents
+        .filter((event) => this.readPayloadString(event.payload, 'status') === 'SOLD')
+        .filter((event) => leadIdSet.has(event.entityId))
+        .map((event) => event.entityId)
+    );
+
+    return this.toSummary(leadIdSet.size, appointmentsSet, showedIds.size, soldLeadIds.size);
   }
 
-  private getMonthWindow(now: Date): RangeWindow {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    start.setHours(0, 0, 0, 0);
+  private getLeadDimensionValue(lead: LeadSnapshot, dimension: ReportDimension): string {
+    if (dimension === 'source') {
+      return lead.source ?? 'Unspecified';
+    }
 
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    end.setMilliseconds(end.getMilliseconds() - 1);
+    if (dimension === 'assignedUser') {
+      return lead.assignedUserId ?? 'Unassigned';
+    }
 
-    return { start, end };
+    return lead.status ?? 'Unspecified';
+  }
+
+  private parseDateRange(start?: string, end?: string) {
+    if (!start || !end) {
+      throw new BadRequestException('start and end are required');
+    }
+
+    const parsedStart = new Date(start);
+    const parsedEnd = new Date(end);
+
+    if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
+      throw new BadRequestException('start and end must be valid ISO dates');
+    }
+
+    if (parsedStart > parsedEnd) {
+      throw new BadRequestException('start must be before end');
+    }
+
+    return { start: parsedStart, end: parsedEnd };
+  }
+
+  private readPayloadString(payload: Prisma.JsonValue | null, key: string): string | null {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return null;
+    }
+
+    const value = (payload as Record<string, unknown>)[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value : null;
+  }
+
+  private equalsIgnoreCase(value: string | null, target: string): boolean {
+    return (value ?? '').toLowerCase() === target.toLowerCase();
+  }
+
+  private inRange(value: Date, range: { start: Date; end: Date }): boolean {
+    return value >= range.start && value <= range.end;
+  }
+
+  private bucketTimeSeries(values: Date[]) {
+    const map = new Map<string, number>();
+
+    for (const value of values) {
+      const bucket = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate())).toISOString();
+      map.set(bucket, (map.get(bucket) ?? 0) + 1);
+    }
+
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, count]) => ({ period, value: count }));
+  }
+
+  private toSummary(totalLeads: number, appointmentsSet: number, appointmentsShowed: number, soldCount: number) {
+    return {
+      total_leads: totalLeads,
+      appointments_set: appointmentsSet,
+      appointments_showed: appointmentsShowed,
+      show_rate: this.toRate(appointmentsShowed, appointmentsSet),
+      appointment_rate: this.toRate(appointmentsSet, totalLeads),
+      sold_count: soldCount,
+      close_rate: this.toRate(soldCount, totalLeads)
+    };
+  }
+
+  private toRate(numerator: number, denominator: number): number {
+    if (denominator <= 0) {
+      return 0;
+    }
+
+    return Number((numerator / denominator).toFixed(4));
   }
 }

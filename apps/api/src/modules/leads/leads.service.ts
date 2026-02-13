@@ -128,7 +128,7 @@ export class LeadsService {
   }
 
   async updateLead(dealershipId: string, leadId: string, payload: UpdateLeadDto, actorUserId?: string) {
-    await this.ensureLeadExists(dealershipId, leadId);
+    const existingLead = await this.ensureLeadExists(dealershipId, leadId);
     const source = await this.resolveSource(dealershipId, payload.source);
 
     if (payload.assignedToUserId !== undefined) {
@@ -159,6 +159,17 @@ export class LeadsService {
       entityId: lead.id,
       metadata: payload as Prisma.InputJsonValue
     });
+
+    if (payload.status && payload.status !== existingLead.status) {
+      await this.eventLogService.emit({
+        dealershipId,
+        actorUserId,
+        eventType: 'lead_status_changed',
+        entityType: 'Lead',
+        entityId: lead.id,
+        payload: { status: lead.status, previousStatus: existingLead.status }
+      });
+    }
 
     return lead;
   }
@@ -198,7 +209,7 @@ export class LeadsService {
   }
 
   async updateStatus(dealershipId: string, leadId: string, status: LeadStatus, actorUserId?: string) {
-    await this.ensureLeadExists(dealershipId, leadId);
+    const existingLead = await this.ensureLeadExists(dealershipId, leadId);
 
     const lead = await this.prisma.lead.update({
       where: { id: leadId },
@@ -218,12 +229,24 @@ export class LeadsService {
       metadata: { status }
     });
 
+    if (existingLead.status !== status) {
+      await this.eventLogService.emit({
+        dealershipId,
+        actorUserId,
+        eventType: 'lead_status_changed',
+        entityType: 'Lead',
+        entityId: lead.id,
+        payload: { status, previousStatus: existingLead.status }
+      });
+    }
+
     return lead;
   }
 
-  private async ensureLeadExists(dealershipId: string, leadId: string): Promise<void> {
-    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, dealershipId }, select: { id: true } });
+  private async ensureLeadExists(dealershipId: string, leadId: string): Promise<{ id: string; status: LeadStatus }> {
+    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, dealershipId }, select: { id: true, status: true } });
     if (!lead) throw new NotFoundException('Lead not found');
+    return lead;
   }
 
   private parseDateRange(dateRange?: string): { start: Date; end: Date } | null {
