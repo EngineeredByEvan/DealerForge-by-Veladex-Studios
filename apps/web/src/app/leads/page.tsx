@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/select';
 import { Table } from '@/components/ui/table';
 import { useToast } from '@/components/ui/toast';
 import { CreateLeadPayload, Lead, LeadStatus, createLead, fetchLeads } from '@/lib/api';
+import { subscribeToDealershipChange } from '@/lib/dealership-store';
 
 const LEAD_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'APPOINTMENT_SET', 'NEGOTIATING', 'SOLD', 'LOST'];
 
@@ -38,14 +39,40 @@ export default function LeadsPage(): JSX.Element {
 
   const loadLeads = useCallback(async (): Promise<void> => {
     setLoading(true);
-    const dateRangeMap: Record<string, string> = { today: 'TODAY', week: 'THIS_WEEK', month: 'THIS_MONTH' };
-    const data = await fetchLeads({ status: status ? (status as LeadStatus) : undefined, assignedTo: assignedTo || undefined, source: source || undefined, q: q || undefined, dateRange: dateRangeMap[range] ?? undefined });
-    setLeads(data);
-    setLoading(false);
-    setError(null);
-  }, [assignedTo, q, range, source, status]);
+    try {
+      const dateRangeMap: Record<string, string> = { today: 'TODAY', week: 'THIS_WEEK', month: 'THIS_MONTH' };
+      const data = await fetchLeads({
+        status: status ? (status as LeadStatus) : undefined,
+        assignedTo: assignedTo || undefined,
+        source: source || undefined,
+        q: q || undefined,
+        dateRange: dateRangeMap[range] ?? undefined
+      });
+      setLeads(data);
+      setError(null);
+    } catch {
+      setLeads([]);
+      setError('Unable to load leads for the selected dealership');
+      push('Unable to load leads');
+    } finally {
+      setLoading(false);
+    }
+  }, [assignedTo, push, q, range, source, status]);
 
-  useEffect(() => { void loadLeads(); }, [loadLeads]);
+  useEffect(() => {
+    void loadLeads();
+  }, [loadLeads]);
+
+  useEffect(() => {
+    const unsub = subscribeToDealershipChange(() => {
+      void loadLeads();
+    });
+    return unsub;
+  }, [loadLeads]);
+
+  useEffect(() => {
+    setStatus(searchParams.get('status') ?? '');
+  }, [searchParams]);
 
   useEffect(() => {
     if (!focusId) return;
@@ -75,6 +102,7 @@ export default function LeadsPage(): JSX.Element {
       await loadLeads();
     } catch {
       setError('Unable to create lead');
+      push('Unable to create lead');
     } finally { setCreating(false); }
   };
 
@@ -97,7 +125,13 @@ export default function LeadsPage(): JSX.Element {
       </SectionCard>
 
       <SectionCard title="Pipeline records">
-        <DataTableShell loading={loading} empty={!loading && leads.length === 0} toolbar={<div className="filter-bar"><Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button>{searchParams.get('sla') === 'first-response' ? <Badge>First response SLA focus</Badge> : null}</div>} pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost">Next</Button></>}>
+        <DataTableShell
+          loading={loading}
+          empty={!loading && leads.length === 0}
+          emptyState="No leads yet"
+          toolbar={<div className="filter-bar"><Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button>{searchParams.get('sla') === 'first-response' ? <Badge>First response SLA focus</Badge> : null}</div>}
+          pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost">Next</Button></>}
+        >
           <Table>
             <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Vehicle</th><th>Assigned</th></tr></thead>
             <tbody>{sortedLeads.map((lead) => <tr key={lead.id} data-lead-id={lead.id} className={focusedLeadId === lead.id ? 'focus-row' : ''}><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td><Badge>{lead.status}</Badge></td><td><Badge>{lead.source?.name ?? '—'}</Badge></td><td>{lead.vehicleInterest ?? '—'}</td><td><span className="assignee-pill">{(lead.assignedToUserId ?? 'UN').slice(0, 2).toUpperCase()}</span>{lead.assignedToUserId ?? 'Unassigned'}</td></tr>)}</tbody>
