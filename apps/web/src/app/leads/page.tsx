@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { DataTableShell } from '@/components/layout/data-table';
 import { FormSection } from '@/components/layout/form-section';
 import { PageHeader } from '@/components/layout/page-header';
 import { SectionCard } from '@/components/layout/section-card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
@@ -30,15 +31,15 @@ export default function LeadsPage(): JSX.Element {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [formState, setFormState] = useState<CreateLeadPayload>({ firstName: '', lastName: '', email: '', phone: '', source: '', vehicleInterest: '' });
 
-  async function loadLeads(): Promise<void> {
+  const loadLeads = useCallback(async (): Promise<void> => {
     setLoading(true);
     const data = await fetchLeads({ status: status ? (status as LeadStatus) : undefined, assignedTo: assignedTo || undefined, source: source || undefined, q: q || undefined });
     setLeads(data);
     setLoading(false);
     setError(null);
-  }
+  }, [assignedTo, q, source, status]);
 
-  useEffect(() => { void loadLeads(); }, []);
+  useEffect(() => { void loadLeads(); }, [loadLeads]);
 
   const sortedLeads = useMemo(() => [...leads].sort((a, b) => {
     const aName = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim();
@@ -81,10 +82,10 @@ export default function LeadsPage(): JSX.Element {
       </SectionCard>
 
       <SectionCard title="Pipeline records">
-        <DataTableShell loading={loading} empty={!loading && leads.length === 0} toolbar={<Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button>}>
+        <DataTableShell loading={loading} empty={!loading && leads.length === 0} toolbar={<div className="filter-bar"><Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button></div>} pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost">Next</Button></>}>
           <Table>
             <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Vehicle</th><th>Assigned</th></tr></thead>
-            <tbody>{sortedLeads.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td>{lead.status}</td><td>{lead.source?.name ?? '—'}</td><td>{lead.vehicleInterest ?? '—'}</td><td>{lead.assignedToUserId ?? 'Unassigned'}</td></tr>)}</tbody>
+            <tbody>{sortedLeads.map((lead) => <tr key={lead.id}><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td><Badge>{lead.status}</Badge></td><td><Badge>{lead.source?.name ?? '—'}</Badge></td><td>{lead.vehicleInterest ?? '—'}</td><td><span className="assignee-pill">{(lead.assignedToUserId ?? 'UN').slice(0, 2).toUpperCase()}</span>{lead.assignedToUserId ?? 'Unassigned'}</td></tr>)}</tbody>
           </Table>
         </DataTableShell>
       </SectionCard>

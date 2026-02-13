@@ -1,6 +1,16 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { DataTableShell } from '@/components/layout/data-table';
+import { FormField } from '@/components/layout/form-field';
+import { PageHeader } from '@/components/layout/page-header';
+import { SectionCard } from '@/components/layout/section-card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Table } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import {
   CreateIntegrationPayload,
   Integration,
@@ -78,74 +88,51 @@ export default function SettingsIntegrationsPage(): JSX.Element {
   }
 
   return (
-    <main style={{ padding: 16, display: 'grid', gap: 20 }}>
-      <section>
-        <h1>Integrations Settings</h1>
-        <p>Manage lead source integrations and import CSV leads.</p>
-      </section>
+    <div className="grid" style={{ gap: 20 }}>
+      <PageHeader title="Integrations" subtitle="Manage lead sources and import records through clean, reliable workflows." />
+      {error ? <p className="error">{error}</p> : null}
 
-      {error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
-
-      <section style={{ border: '1px solid #d4d4d8', borderRadius: 12, padding: 16 }}>
-        <h2>Create Integration</h2>
-        <form onSubmit={onCreate} style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
-          <input
-            required
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Integration name"
-          />
-
-          <select value={provider} onChange={(event) => setProvider(event.target.value as IntegrationProvider)}>
-            {PROVIDERS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-
-          <input
-            value={webhookSecret}
-            onChange={(event) => setWebhookSecret(event.target.value)}
-            placeholder="Webhook secret (optional auto-generated)"
-          />
-
-          <button type="submit" style={{ width: 180 }}>
-            Create Integration
-          </button>
+      <SectionCard title="Create Integration">
+        <form onSubmit={onCreate} className="form-grid">
+          <FormField label="Integration name" htmlFor="name">
+            <Input id="name" required value={name} onChange={(event) => setName(event.target.value)} placeholder="AutoTrader - East Region" />
+          </FormField>
+          <FormField label="Provider" htmlFor="provider">
+            <Select id="provider" value={provider} onChange={(event) => setProvider(event.target.value as IntegrationProvider)}>
+              {PROVIDERS.map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="Webhook secret" htmlFor="secret" hint="Optional">
+            <Input id="secret" value={webhookSecret} onChange={(event) => setWebhookSecret(event.target.value)} placeholder="Auto-generated if omitted" />
+          </FormField>
+          <div style={{ alignSelf: 'end' }}><Button type="submit">Create Integration</Button></div>
         </form>
-      </section>
+      </SectionCard>
 
-      <section style={{ border: '1px solid #d4d4d8', borderRadius: 12, padding: 16 }}>
-        <h2>CSV Import</h2>
-        <form onSubmit={onImportCsv} style={{ display: 'grid', gap: 8 }}>
-          <textarea
-            required
-            rows={8}
-            value={csv}
-            onChange={(event) => setCsv(event.target.value)}
-            placeholder={[
-              'firstName,lastName,email,phone,vehicleInterest',
-              'Alex,Rivera,alex@example.com,5550001,2024 CX-5'
-            ].join('\n')}
-          />
-
-          <button type="submit" style={{ width: 140 }}>
-            Import CSV
-          </button>
+      <SectionCard title="CSV Import">
+        <form onSubmit={onImportCsv} className="grid">
+          <FormField label="CSV payload" htmlFor="csv" description="Paste CSV rows with lead data.">
+            <Textarea id="csv" required rows={8} value={csv} onChange={(event) => setCsv(event.target.value)} placeholder={[ 'firstName,lastName,email,phone,vehicleInterest', 'Alex,Rivera,alex@example.com,5550001,2024 CX-5' ].join('\n')} />
+          </FormField>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Button type="submit">Import CSV</Button>
+            {importSummary ? <Badge>{importSummary}</Badge> : null}
+          </div>
         </form>
-        {importSummary ? <p>{importSummary}</p> : null}
-      </section>
+      </SectionCard>
 
-      <section style={{ border: '1px solid #d4d4d8', borderRadius: 12, padding: 16 }}>
-        <h2>Configured Integrations</h2>
-        {loading ? <p>Loading integrations...</p> : null}
-        {!loading && integrations.length === 0 ? <p>No integrations configured yet.</p> : null}
-
-        {!loading && integrations.length > 0 ? (
-          <table cellPadding={8} style={{ borderCollapse: 'collapse', width: '100%' }}>
+      <SectionCard title="Configured integrations">
+        <DataTableShell
+          loading={loading}
+          empty={!loading && integrations.length === 0}
+          toolbar={<div className="filter-bar"><Input placeholder="Search integrations" readOnly /></div>}
+          pagination={<><span>Showing {integrations.length} integrations</span><Button variant="ghost">Next</Button></>}
+        >
+          <Table>
             <thead>
-              <tr style={{ textAlign: 'left', borderBottom: '1px solid #e4e4e7' }}>
+              <tr>
                 <th>Name</th>
                 <th>Provider</th>
                 <th>Webhook Secret</th>
@@ -154,19 +141,17 @@ export default function SettingsIntegrationsPage(): JSX.Element {
             </thead>
             <tbody>
               {integrations.map((integration) => (
-                <tr key={integration.id} style={{ borderBottom: '1px solid #f4f4f5' }}>
+                <tr key={integration.id}>
                   <td>{integration.name}</td>
-                  <td>{integration.provider}</td>
-                  <td>
-                    <code>{integration.webhookSecret}</code>
-                  </td>
+                  <td><Badge>{integration.provider}</Badge></td>
+                  <td><code>{integration.webhookSecret}</code></td>
                   <td>{integration._count.events}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        ) : null}
-      </section>
-    </main>
+          </Table>
+        </DataTableShell>
+      </SectionCard>
+    </div>
   );
 }

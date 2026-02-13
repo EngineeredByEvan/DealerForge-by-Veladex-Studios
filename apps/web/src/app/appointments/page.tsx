@@ -1,16 +1,21 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { DataTableShell } from '@/components/layout/data-table';
+import { FormField } from '@/components/layout/form-field';
+import { PageHeader } from '@/components/layout/page-header';
+import { SectionCard } from '@/components/layout/section-card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Table } from '@/components/ui/table';
 import {
   Appointment,
-  AppointmentStatus,
   cancelAppointment,
   confirmAppointment,
   createAppointment,
   fetchAppointments
 } from '@/lib/api';
-
-const STATUS_OPTIONS: AppointmentStatus[] = ['SET', 'CONFIRMED', 'SHOWED', 'NO_SHOW', 'CANCELED'];
 
 export default function AppointmentsPage(): JSX.Element {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -39,14 +44,12 @@ export default function AppointmentsPage(): JSX.Element {
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-
     try {
       const created = await createAppointment({
         start_at: startAt,
         end_at: endAt,
         note: note || undefined
       });
-
       setAppointments((previous) => [created, ...previous]);
       setStartAt('');
       setEndAt('');
@@ -82,78 +85,59 @@ export default function AppointmentsPage(): JSX.Element {
   }
 
   return (
-    <main>
-      <h1>Appointments</h1>
-      {error ? <p>{error}</p> : null}
+    <div className="grid" style={{ gap: 18 }}>
+      <PageHeader title="Appointments" subtitle="Book and manage meetings with polished customer-facing operations." />
+      {error ? <p className="error">{error}</p> : null}
 
-      <section>
-        <h2>Book appointment</h2>
-        <form onSubmit={(event) => void handleCreate(event)}>
-          <label htmlFor="start_at">Start (ISO)</label>
-          <input
-            id="start_at"
-            type="text"
-            value={startAt}
-            placeholder="2026-02-01T15:00:00.000Z"
-            onChange={(event) => setStartAt(event.target.value)}
-            required
-          />
-
-          <label htmlFor="end_at">End (ISO)</label>
-          <input
-            id="end_at"
-            type="text"
-            value={endAt}
-            placeholder="2026-02-01T16:00:00.000Z"
-            onChange={(event) => setEndAt(event.target.value)}
-            required
-          />
-
-          <label htmlFor="note">Note</label>
-          <input id="note" type="text" value={note} onChange={(event) => setNote(event.target.value)} />
-
-          <button type="submit">Create Appointment</button>
+      <SectionCard title="Book appointment">
+        <form onSubmit={(event) => void handleCreate(event)} className="form-grid">
+          <FormField label="Start (ISO)" htmlFor="start_at">
+            <Input id="start_at" type="text" value={startAt} placeholder="2026-02-01T15:00:00.000Z" onChange={(event) => setStartAt(event.target.value)} required />
+          </FormField>
+          <FormField label="End (ISO)" htmlFor="end_at">
+            <Input id="end_at" type="text" value={endAt} placeholder="2026-02-01T16:00:00.000Z" onChange={(event) => setEndAt(event.target.value)} required />
+          </FormField>
+          <FormField label="Note" htmlFor="note" hint="Optional">
+            <Input id="note" type="text" value={note} onChange={(event) => setNote(event.target.value)} />
+          </FormField>
+          <div style={{ alignSelf: 'end' }}><Button type="submit">Create Appointment</Button></div>
         </form>
-      </section>
+      </SectionCard>
 
-      <section>
-        <h2>Appointment list</h2>
-        {loading ? <p>Loading appointments...</p> : null}
-        {!loading && appointments.length === 0 ? <p>No appointments found. Book one above to get started.</p> : null}
-        <ul>
-          {appointments.map((appointment) => (
-            <li key={appointment.id}>
-              <strong>{appointment.status}</strong>
-              <br />
-              <small>
-                {new Date(appointment.start_at).toLocaleString()} -{' '}
-                {new Date(appointment.end_at).toLocaleString()}
-              </small>
-              <p>Lead: {appointment.lead ? `${appointment.lead.firstName ?? ''} ${appointment.lead.lastName ?? ''}`.trim() || appointment.lead.id : '—'}</p>
-              <p>Note: {appointment.note ?? '—'}</p>
-              <button
-                type="button"
-                disabled={appointment.status === 'CONFIRMED' || appointment.status === 'CANCELED'}
-                onClick={() => void handleConfirm(appointment.id)}
-              >
-                Confirm
-              </button>
-              <button
-                type="button"
-                disabled={appointment.status === 'CANCELED' || appointment.status === 'SHOWED' || appointment.status === 'NO_SHOW'}
-                onClick={() => void handleCancel(appointment.id)}
-              >
-                Cancel
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section>
-        <h2>Status legend</h2>
-        <p>{STATUS_OPTIONS.join(' | ')}</p>
-      </section>
-    </main>
+      <SectionCard title="Appointment list">
+        <DataTableShell
+          loading={loading}
+          empty={!loading && appointments.length === 0}
+          toolbar={<div className="filter-bar"><Input readOnly value="Filter and sort controls coming soon" /></div>}
+          pagination={<><span>Showing {appointments.length} appointments</span><Button variant="ghost">Next</Button></>}
+        >
+          <Table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Window</th>
+                <th>Lead</th>
+                <th>Note</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {appointments.map((appointment) => (
+                <tr key={appointment.id}>
+                  <td><Badge>{appointment.status}</Badge></td>
+                  <td>{new Date(appointment.start_at).toLocaleString()} - {new Date(appointment.end_at).toLocaleString()}</td>
+                  <td>{appointment.lead ? `${appointment.lead.firstName ?? ''} ${appointment.lead.lastName ?? ''}`.trim() || appointment.lead.id : '—'}</td>
+                  <td>{appointment.note ?? '—'}</td>
+                  <td style={{ display: 'flex', gap: 8 }}>
+                    <Button type="button" variant="secondary" disabled={appointment.status === 'CONFIRMED' || appointment.status === 'CANCELED'} onClick={() => void handleConfirm(appointment.id)}>Confirm</Button>
+                    <Button type="button" variant="ghost" disabled={appointment.status === 'CANCELED' || appointment.status === 'SHOWED' || appointment.status === 'NO_SHOW'} onClick={() => void handleCancel(appointment.id)}>Cancel</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </DataTableShell>
+      </SectionCard>
+    </div>
   );
 }
