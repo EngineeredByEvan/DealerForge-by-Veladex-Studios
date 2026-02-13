@@ -22,7 +22,7 @@ export class AuthService {
     }
 
     const accessToken = this.jwtService.sign(
-      { sub: user.id, email: user.email },
+      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
       { secret: process.env.JWT_SECRET, expiresIn: '15m' }
     );
 
@@ -60,7 +60,7 @@ export class AuthService {
     }
 
     const newAccessToken = this.jwtService.sign(
-      { sub: user.id, email: user.email },
+      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
       { secret: process.env.JWT_SECRET, expiresIn: '15m' }
     );
 
@@ -89,6 +89,7 @@ export class AuthService {
     email: string;
     firstName: string;
     lastName: string;
+    isPlatformAdmin: boolean;
     dealerships: { dealershipId: string; dealershipName: string; role: string }[];
   }> {
     const user = await this.prisma.user.findUnique({
@@ -116,7 +117,10 @@ export class AuthService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
-      dealerships: user.dealerships.map((membership) => ({
+      isPlatformAdmin: user.isPlatformAdmin,
+      dealerships: user.dealerships
+        .filter((membership) => membership.isActive)
+        .map((membership) => ({
         dealershipId: membership.dealershipId,
         dealershipName: membership.dealership.name,
         role: membership.role

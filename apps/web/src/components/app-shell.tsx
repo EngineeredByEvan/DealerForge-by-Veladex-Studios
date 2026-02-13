@@ -27,7 +27,7 @@ import {
   subscribeToNotificationUpdates
 } from '@/lib/notifications';
 
-const navItems = [
+const baseNavItems = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/leads', label: 'Leads' },
   { href: '/tasks', label: 'Tasks' },
@@ -51,7 +51,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const router = useRouter();
   const { push } = useToast();
   const [collapsed, setCollapsed] = useState(false);
-  const [dealerships, setDealerships] = useState<Array<{ dealershipId: string; dealershipName: string }>>([]);
+  const [dealerships, setDealerships] = useState<Array<{ dealershipId: string; dealershipName: string; role: string }>>([]);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [selectedDealership, setSelectedDealership] = useState('');
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -68,6 +69,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     void fetchMe()
       .then((me) => {
         setDealerships(me.dealerships);
+        setIsPlatformAdmin(me.isPlatformAdmin);
         const active = getSelectedDealershipId() ?? me.dealerships[0]?.dealershipId ?? '';
         setSelectedDealership(active);
         if (active) setSelectedDealershipId(active);
@@ -111,6 +113,13 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   }, []);
 
   if (pathname === '/login') return <>{children}</>;
+
+  const canManageTeam = isPlatformAdmin || dealerships.some((d) => d.dealershipId === selectedDealership && d.role === 'ADMIN');
+  const navItems = [
+    ...baseNavItems,
+    ...(isPlatformAdmin ? [{ href: '/settings/dealerships', label: 'Dealership Settings' }] : []),
+    ...(canManageTeam ? [{ href: '/settings/team', label: 'Team' }] : [])
+  ];
 
   const unreadCount = notifications.filter((item) => !item.read).length;
 
