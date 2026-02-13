@@ -1,4 +1,4 @@
-import { DealershipStatus } from '@prisma/client';
+import { DealershipStatus, Prisma } from '@prisma/client';
 import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateDealershipDto {
@@ -27,7 +27,7 @@ export class CreateDealershipDto {
 
   @IsOptional()
   @IsObject()
-  businessHours?: Record<string, unknown>;
+  businessHours?: Prisma.InputJsonValue;
 
   @IsOptional()
   @IsString()
@@ -69,7 +69,7 @@ export class UpdateDealershipDto {
 
   @IsOptional()
   @IsObject()
-  businessHours?: Record<string, unknown>;
+  businessHours?: Prisma.InputJsonValue;
 
   @IsOptional()
   @IsString()
@@ -106,7 +106,7 @@ export class UpdateDealershipSettingsDto {
 
   @IsOptional()
   @IsObject()
-  businessHours?: Record<string, unknown>;
+  businessHours?: Prisma.InputJsonValue;
 
   @IsOptional()
   @IsString()

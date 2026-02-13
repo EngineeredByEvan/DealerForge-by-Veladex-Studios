@@ -30,19 +30,25 @@ export class DealershipsService {
     });
 
     return this.prisma.$transaction(async (tx) => {
+      const data: Prisma.DealershipCreateInput = {
+        name: payload.name,
+        slug: payload.slug,
+        timezone: payload.timezone,
+        status: payload.status ?? DealershipStatus.ACTIVE,
+        ...(payload.businessHours !== undefined
+          ? { businessHours: payload.businessHours as Prisma.InputJsonValue }
+          : {}),
+        ...(payload.twilioMessagingServiceSid !== undefined
+          ? { twilioMessagingServiceSid: payload.twilioMessagingServiceSid }
+          : {}),
+        ...(payload.twilioFromPhone !== undefined ? { twilioFromPhone: payload.twilioFromPhone } : {}),
+        ...(payload.twilioAccountSid !== undefined ? { twilioAccountSid: payload.twilioAccountSid } : {}),
+        ...(payload.twilioAuthToken !== undefined ? { twilioAuthToken: payload.twilioAuthToken } : {}),
+        dealerGroup: { connect: { id: dealerGroup.id } }
+      };
+
       const dealership = await tx.dealership.create({
-        data: {
-          dealerGroupId: dealerGroup.id,
-          name: payload.name,
-          slug: payload.slug,
-          timezone: payload.timezone,
-          status: payload.status ?? DealershipStatus.ACTIVE,
-          businessHours: payload.businessHours,
-          twilioMessagingServiceSid: payload.twilioMessagingServiceSid,
-          twilioFromPhone: payload.twilioFromPhone,
-          twilioAccountSid: payload.twilioAccountSid,
-          twilioAuthToken: payload.twilioAuthToken
-        },
+        data,
         include: DEALERSHIP_INCLUDE
       });
 
@@ -75,9 +81,25 @@ export class DealershipsService {
   }
 
   async update(dealershipId: string, payload: UpdateDealershipDto) {
+    const data: Prisma.DealershipUpdateInput = {
+      ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.slug !== undefined ? { slug: payload.slug } : {}),
+      ...(payload.timezone !== undefined ? { timezone: payload.timezone } : {}),
+      ...(payload.status !== undefined ? { status: payload.status } : {}),
+      ...(payload.businessHours !== undefined
+        ? { businessHours: payload.businessHours as Prisma.InputJsonValue }
+        : {}),
+      ...(payload.twilioMessagingServiceSid !== undefined
+        ? { twilioMessagingServiceSid: payload.twilioMessagingServiceSid }
+        : {}),
+      ...(payload.twilioFromPhone !== undefined ? { twilioFromPhone: payload.twilioFromPhone } : {}),
+      ...(payload.twilioAccountSid !== undefined ? { twilioAccountSid: payload.twilioAccountSid } : {}),
+      ...(payload.twilioAuthToken !== undefined ? { twilioAuthToken: payload.twilioAuthToken } : {})
+    };
+
     return this.prisma.dealership.update({
       where: { id: dealershipId },
-      data: payload,
+      data,
       include: DEALERSHIP_INCLUDE
     });
   }
@@ -118,9 +140,24 @@ export class DealershipsService {
   ) {
     this.assertSettingsAccess(dealershipId, user, tenant);
 
+    const data: Prisma.DealershipUpdateInput = {
+      ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.timezone !== undefined ? { timezone: payload.timezone } : {}),
+      ...(payload.status !== undefined ? { status: payload.status } : {}),
+      ...(payload.businessHours !== undefined
+        ? { businessHours: payload.businessHours as Prisma.InputJsonValue }
+        : {}),
+      ...(payload.twilioMessagingServiceSid !== undefined
+        ? { twilioMessagingServiceSid: payload.twilioMessagingServiceSid }
+        : {}),
+      ...(payload.twilioFromPhone !== undefined ? { twilioFromPhone: payload.twilioFromPhone } : {}),
+      ...(payload.twilioAccountSid !== undefined ? { twilioAccountSid: payload.twilioAccountSid } : {}),
+      ...(payload.twilioAuthToken !== undefined ? { twilioAuthToken: payload.twilioAuthToken } : {})
+    };
+
     const dealership = await this.prisma.dealership.update({
       where: { id: dealershipId },
-      data: payload,
+      data,
       select: {
         id: true,
         name: true,
