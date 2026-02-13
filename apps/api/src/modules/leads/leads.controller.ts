@@ -37,11 +37,15 @@ export class LeadsController {
     return this.leadsService.createLead(req.tenant!.dealershipId, payload, req.user?.userId, req.tenant?.role);
   }
 
+  @Get('options')
+  options(@Req() req: TenantRequest) {
+    return this.leadsService.getOptions(req.tenant!.dealershipId);
+  }
+
   @Get(':id')
   findOne(@Req() req: TenantRequest, @Param('id') leadId: string) {
     return this.leadsService.findById(req.tenant!.dealershipId, leadId);
   }
-
 
   @Get(':id/timeline')
   timeline(

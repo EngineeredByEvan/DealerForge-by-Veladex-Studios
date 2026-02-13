@@ -43,6 +43,10 @@ enum LeadType {
   FINANCE
   GENERAL
   TRADE_IN
+  PHONE_UP
+  WALK_IN
+  INTERNET
+  OTHER
 }
 
 enum ActivityType {

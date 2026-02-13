@@ -189,6 +189,18 @@ describe('Leads endpoints (e2e)', () => {
               membership.userId === where.userId && membership.dealershipId === where.dealershipId
           ) ?? null
         );
+      }),
+      findMany: jest.fn(async ({ where }: any) => {
+        return state.memberships
+          .filter((membership) => membership.dealershipId === where.dealershipId)
+          .filter((membership) => (where.role?.in ? where.role.in.includes(membership.role) : true))
+          .map((membership) => {
+            const user = state.users.find((candidate) => candidate.id === membership.userId)!;
+            return {
+              role: membership.role,
+              user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email }
+            };
+          });
       })
     },
     leadSource: {
@@ -446,4 +458,25 @@ describe('Leads endpoints (e2e)', () => {
       .set('X-Dealership-Id', 'd-2')
       .expect(403);
   });
+
+  it('returns lead options scoped to dealership', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'admin@test.com', password: 'Password123!' })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/leads/options')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .expect(200);
+
+    expect(response.body.statuses).toContain('NEW');
+    expect(response.body.leadTypes).toContain('GENERAL');
+    expect(response.body.assignableUsers).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'u-admin' }), expect.objectContaining({ id: 'u-sales-1' })])
+    );
+    expect(response.body.assignableUsers).toEqual(expect.not.arrayContaining([expect.objectContaining({ id: 'u-sales-2' })]));
+  });
+
 });

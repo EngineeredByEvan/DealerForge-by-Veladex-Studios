@@ -14,7 +14,7 @@ import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { Table } from '@/components/ui/table';
 import { useToast } from '@/components/ui/toast';
-import { CreateLeadPayload, Lead, LeadStatus, assignLead, bulkSendCommunication, createLead, fetchLeadMeta, fetchLeads, fetchTeamUsers, fetchTemplates } from '@/lib/api';
+import { CreateLeadPayload, Lead, LeadStatus, assignLead, bulkSendCommunication, createLead, fetchLeads, fetchLeadsOptions, fetchTemplates } from '@/lib/api';
 import { subscribeToDealershipChange } from '@/lib/dealership-store';
 
 
@@ -64,10 +64,10 @@ export default function LeadsPage(): JSX.Element {
 
 
   useEffect(() => {
-    void Promise.all([fetchLeadMeta(), fetchTeamUsers()]).then(([meta, members]) => {
-      setStatuses(meta.statuses);
-      setLeadTypes(meta.leadTypes);
-      setTeamUsers(members.map((m) => ({ id: m.user.id, name: `${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email })));
+    void fetchLeadsOptions().then((options) => {
+      setStatuses(options.statuses);
+      setLeadTypes(options.leadTypes);
+      setTeamUsers(options.assignableUsers.map((m) => ({ id: m.id, name: `${m.firstName} ${m.lastName}`.trim() || m.email })));
     }).catch(() => undefined);
   }, []);
   useEffect(() => {
@@ -128,7 +128,7 @@ export default function LeadsPage(): JSX.Element {
           <FormSection>
             <Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search name/email/vehicle" />
             <Select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map((leadStatus) => <option key={leadStatus} value={leadStatus}>{leadStatus}</option>)}</Select>
-            <Input value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="Assigned user id" />
+            <Select value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)}><option value="">All assigned users</option>{teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>
             <Input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Source" />
           </FormSection>
           <Button type="submit" variant="secondary">Apply filters</Button>

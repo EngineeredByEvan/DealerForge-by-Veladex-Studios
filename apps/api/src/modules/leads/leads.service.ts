@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { LeadStatus, Prisma, Role } from '@prisma/client';
+import { LeadStatus, LeadType, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
@@ -72,6 +72,44 @@ export class LeadsService {
       include: LEAD_INCLUDE,
       orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }]
     });
+  }
+
+
+
+  async getOptions(dealershipId: string) {
+    const assignableMemberships = await this.prisma.userDealershipRole.findMany({
+      where: {
+        dealershipId,
+        isActive: true,
+        role: {
+          in: [Role.ADMIN, Role.MANAGER, Role.SALES, Role.BDC]
+        }
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        },
+        role: true
+      },
+      orderBy: [{ user: { firstName: 'asc' } }, { user: { lastName: 'asc' } }]
+    });
+
+    return {
+      statuses: Object.values(LeadStatus),
+      leadTypes: Object.values(LeadType),
+      assignableUsers: assignableMemberships.map((membership) => ({
+        id: membership.user.id,
+        firstName: membership.user.firstName,
+        lastName: membership.user.lastName,
+        email: membership.user.email,
+        role: membership.role
+      }))
+    };
   }
 
   async createLead(dealershipId: string, payload: CreateLeadDto, actorUserId?: string, actorRole?: Role) {

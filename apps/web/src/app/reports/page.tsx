@@ -50,7 +50,7 @@ export default function ReportsPage(): JSX.Element {
   const [breakdown, setBreakdown] = useState<ReportsBreakdownRow[]>([]);
   const [trends, setTrends] = useState<ReportsTrendPoint[]>([]);
   const [sources, setSources] = useState<string[]>([]);
-  const [users, setUsers] = useState<string[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
   const [statuses, setStatuses] = useState<string[]>([]);
   const [leadTypes, setLeadTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +71,7 @@ export default function ReportsPage(): JSX.Element {
         setSources(meta.sources.map((sourceItem) => sourceItem.name));
         setStatuses(meta.statuses);
         setLeadTypes(meta.leadTypes);
-        setUsers(teamUsers.map((membership) => membership.user.id));
+        setUsers(teamUsers.map((membership) => ({ id: membership.user.id, name: `${membership.user.firstName} ${membership.user.lastName}`.trim() || membership.user.email })));
       })
       .catch(() => {
         setSources([]);
@@ -123,7 +123,7 @@ export default function ReportsPage(): JSX.Element {
           <Select value={assignedUser} onChange={(event) => setAssignedUser(event.target.value)}>
             <option value="">All assigned users</option>
             {users.map((item) => (
-              <option key={item} value={item}>{item}</option>
+              <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </Select>
           <Select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map((item) => <option key={item} value={item}>{item}</option>)}</Select>
@@ -153,14 +153,16 @@ export default function ReportsPage(): JSX.Element {
               <option value="sold">Sold</option>
             </Select>
           </div>
+          <p><strong>Metric:</strong> {metric}</p>
           {loading ? (
             <div className="table-skeletons"><div className="skeleton" /></div>
-          ) : trends.length === 0 ? (
-            <div className="table-empty">No trend data for selected filters.</div>
+          ) : trends.length <= 1 ? (
+            <div className="table-empty">Not enough data yet.</div>
           ) : (
-            <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              <small>X-axis: Date • Y-axis: Metric value</small>
               {trends.map((point) => (
-                <div key={point.period} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 50px', gap: 10, alignItems: 'center' }}>
+                <div key={point.period} title={`${new Date(point.period).toLocaleDateString()}: ${point.value}`} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 50px', gap: 10, alignItems: 'center' }}>
                   <small>{new Date(point.period).toLocaleDateString()}</small>
                   <div style={{ background: 'var(--border)', borderRadius: 8, height: 10 }}>
                     <div style={{ width: `${Math.max(4, point.value * 8)}px`, background: 'var(--primary)', height: '100%', borderRadius: 8 }} />
