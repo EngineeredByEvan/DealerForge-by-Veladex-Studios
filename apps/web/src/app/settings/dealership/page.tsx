@@ -26,6 +26,10 @@ export default function DealershipSettingsPage(): JSX.Element {
   const [timezone, setTimezone] = useState('UTC');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [businessHoursJson, setBusinessHoursJson] = useState('{}');
+  const [twilioMessagingServiceSid, setTwilioMessagingServiceSid] = useState('');
+  const [twilioFromPhone, setTwilioFromPhone] = useState('');
+  const [twilioAccountSid, setTwilioAccountSid] = useState('');
+  const [twilioAuthToken, setTwilioAuthToken] = useState('');
 
   useEffect(() => {
     const dealershipId = getSelectedDealershipId();
@@ -42,6 +46,9 @@ export default function DealershipSettingsPage(): JSX.Element {
         setTimezone(data.timezone);
         setStatus(data.status);
         setBusinessHoursJson(JSON.stringify(data.businessHours ?? {}, null, 2));
+        setTwilioMessagingServiceSid(data.twilioMessagingServiceSid ?? '');
+        setTwilioFromPhone(data.twilioFromPhone ?? '');
+        setTwilioAccountSid(data.twilioAccountSid ?? '');
       })
       .catch(() => push('Unable to load dealership settings. Ensure tenant header and access role are valid.'))
       .finally(() => setLoading(false));
@@ -58,7 +65,11 @@ export default function DealershipSettingsPage(): JSX.Element {
         name,
         timezone,
         status,
-        businessHours: parsedBusinessHours
+        businessHours: parsedBusinessHours,
+        twilioMessagingServiceSid: twilioMessagingServiceSid || undefined,
+        twilioFromPhone: twilioFromPhone || undefined,
+        twilioAccountSid: twilioAccountSid || undefined,
+        twilioAuthToken: twilioAuthToken || undefined
       });
       setDealership(updated);
       push('Dealership settings updated successfully');
@@ -98,6 +109,18 @@ export default function DealershipSettingsPage(): JSX.Element {
             </FormField>
             <FormField label="Business hours (JSON)" htmlFor="businessHours" hint="Optional">
               <Textarea id="businessHours" rows={8} value={businessHoursJson} onChange={(event) => setBusinessHoursJson(event.target.value)} />
+            </FormField>
+            <FormField label="Twilio Messaging Service SID" htmlFor="twilioMessagingServiceSid" hint="Optional; preferred for outbound SMS routing.">
+              <Input id="twilioMessagingServiceSid" value={twilioMessagingServiceSid} onChange={(event) => setTwilioMessagingServiceSid(event.target.value)} />
+            </FormField>
+            <FormField label="Twilio From Phone" htmlFor="twilioFromPhone" hint="E.164 format fallback when messaging service is not set.">
+              <Input id="twilioFromPhone" value={twilioFromPhone} onChange={(event) => setTwilioFromPhone(event.target.value)} />
+            </FormField>
+            <FormField label="Twilio Account SID" htmlFor="twilioAccountSid" hint="Optional dealership override; otherwise env global is used.">
+              <Input id="twilioAccountSid" value={twilioAccountSid} onChange={(event) => setTwilioAccountSid(event.target.value)} />
+            </FormField>
+            <FormField label="Twilio Auth Token" htmlFor="twilioAuthToken" hint={dealership.twilioAuthTokenConfigured ? 'Configured. Leave empty to keep existing token.' : 'Optional dealership override token.'}>
+              <Input id="twilioAuthToken" type="password" value={twilioAuthToken} onChange={(event) => setTwilioAuthToken(event.target.value)} />
             </FormField>
             <div style={{ alignSelf: 'end' }}>
               <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</Button>

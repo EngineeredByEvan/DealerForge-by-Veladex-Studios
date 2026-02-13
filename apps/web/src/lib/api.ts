@@ -303,6 +303,8 @@ export type ConversationThread = {
   createdAt: string;
 };
 
+export type MessageStatus = 'QUEUED' | 'SENT' | 'DELIVERED' | 'FAILED' | 'RECEIVED';
+
 export type Message = {
   id: string;
   dealershipId: string;
@@ -310,7 +312,7 @@ export type Message = {
   channel: MessageChannel;
   direction: MessageDirection;
   body: string;
-  status: string;
+  status: MessageStatus;
   sentAt: string | null;
   actorUserId: string | null;
   providerMessageId: string | null;
@@ -348,6 +350,19 @@ export async function fetchMessagesByLead(leadId: string): Promise<Message[]> {
   const response = await apiRequest(`/communications/messages?leadId=${encodeURIComponent(leadId)}`);
   if (!response.ok) throw new Error('Unable to fetch messages');
   return (await response.json()) as Message[];
+}
+
+export async function sendSmsMessage(
+  leadId: string,
+  payload: { body: string; toPhone?: string; templateId?: string }
+): Promise<Message> {
+  const response = await apiRequest(`/communications/leads/${leadId}/messages/sms`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to send SMS message');
+  return (await response.json()) as Message;
 }
 
 export async function sendMessage(
@@ -847,6 +862,10 @@ export async function fetchLeadNextBestAction(leadId: string): Promise<AiNextBes
 export type DealershipStatus = 'ACTIVE' | 'INACTIVE';
 
 export type Dealership = {
+  twilioMessagingServiceSid?: string | null;
+  twilioFromPhone?: string | null;
+  twilioAccountSid?: string | null;
+  twilioAuthTokenConfigured?: boolean;
   id: string;
   name: string;
   slug: string;
@@ -889,6 +908,10 @@ export async function updateDealershipSettings(
     timezone: string;
     status: DealershipStatus;
     businessHours: Record<string, unknown>;
+    twilioMessagingServiceSid: string;
+    twilioFromPhone: string;
+    twilioAccountSid: string;
+    twilioAuthToken: string;
   }>
 ): Promise<Dealership> {
   const response = await apiRequest(`/dealerships/${dealershipId}`, {

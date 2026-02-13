@@ -111,3 +111,20 @@ export class UpdateTemplateDto {
   @IsString()
   body?: string;
 }
+
+
+export class SendLeadSmsDto {
+  @IsString()
+  @IsNotEmpty()
+  body!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeOptionalString(value))
+  @IsString()
+  templateId?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeOptionalString(value))
+  @IsString()
+  toPhone?: string;
+}

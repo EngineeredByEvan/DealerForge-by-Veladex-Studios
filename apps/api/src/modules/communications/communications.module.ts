@@ -10,18 +10,21 @@ import { MockSmsProvider } from './providers/mock-sms.provider';
 import { MockTelephonyProvider } from './providers/mock-telephony.provider';
 import { SMS_PROVIDER_TOKEN } from './providers/sms-provider.interface';
 import { TELEPHONY_PROVIDER_TOKEN } from './providers/telephony-provider.interface';
+import { TwilioSmsProvider } from './providers/twilio-sms.provider';
+import { TwilioWebhooksController } from './twilio-webhooks.controller';
 
 @Module({
   imports: [PrismaModule, AuditModule, EventLogModule],
-  controllers: [CommunicationsController],
+  controllers: [CommunicationsController, TwilioWebhooksController],
   providers: [
     CommunicationsService,
     MockSmsProvider,
+    TwilioSmsProvider,
     MockEmailProvider,
     MockTelephonyProvider,
     {
       provide: SMS_PROVIDER_TOKEN,
-      useExisting: MockSmsProvider
+      useExisting: TwilioSmsProvider
     },
     {
       provide: EMAIL_PROVIDER_TOKEN,

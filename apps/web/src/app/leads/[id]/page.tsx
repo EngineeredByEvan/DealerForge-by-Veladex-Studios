@@ -18,7 +18,7 @@ import {
   fetchTasks,
   fetchTemplates,
   logCall,
-  sendMessage
+  sendSmsMessage
 } from '@/lib/api';
 import { AiPanel } from '@/components/leads/ai-panel';
 
@@ -46,9 +46,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [appointmentStartAt, setAppointmentStartAt] = useState('');
   const [appointmentEndAt, setAppointmentEndAt] = useState('');
   const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
-  const [composeChannel, setComposeChannel] = useState<'SMS' | 'EMAIL'>('SMS');
-  const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
+    const [composeBody, setComposeBody] = useState('');
   const [composeSubmitting, setComposeSubmitting] = useState(false);
   const [callDurationSec, setCallDurationSec] = useState(300);
   const [callOutcome, setCallOutcome] = useState('Connected - follow up requested');
@@ -100,14 +98,11 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     try {
       setComposeSubmitting(true);
       setError(null);
-      const created = await sendMessage(params.id, {
-        channel: composeChannel,
-        subject: composeChannel === 'EMAIL' ? composeSubject : undefined,
-        body: composeBody
-      });
-      setMessages((previous) => [created, ...previous]);
+      const optimisticId = `optimistic-${Date.now()}`;
+      setMessages((previous) => [{ id: optimisticId, dealershipId: lead?.dealershipId ?? '', threadId: '', channel: 'SMS', direction: 'OUTBOUND', body: composeBody, status: 'QUEUED', sentAt: null, actorUserId: null, providerMessageId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...previous]);
+      const created = await sendSmsMessage(params.id, { body: composeBody });
+      setMessages((previous) => [created, ...previous.filter((msg) => msg.id !== optimisticId)]);
       setComposeBody('');
-      setComposeSubject('');
     } catch {
       setError('Unable to send message');
     } finally {
@@ -204,7 +199,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                   <strong>{item.payload.channel}</strong> ({item.payload.direction}) — {item.payload.body}
                   <br />
                   <small>
-                    {new Date(item.createdAt).toLocaleString()} {item.payload.status ? `• ${item.payload.status}` : ''}
+                    {new Date(item.createdAt).toLocaleString()} <span style={{ marginLeft: 6, padding: '2px 8px', border: '1px solid #ccc', borderRadius: 999 }}>{item.payload.status}</span>
                   </small>
                 </>
               ) : (
@@ -220,30 +215,21 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       </section>
 
       <section>
-        <h2>Compose message</h2>
+        <h2>SMS conversation</h2>
         <form onSubmit={handleComposeSubmit} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
-          <label>
-            Channel
-            <select value={composeChannel} onChange={(event) => setComposeChannel(event.target.value as 'SMS' | 'EMAIL')}>
-              <option value="SMS">SMS</option>
-              <option value="EMAIL">Email</option>
-            </select>
-          </label>
           <label>
             Template
             <select
               onChange={(event) => {
                 const template = templates.find((item) => item.id === event.target.value);
                 if (!template) return;
-                setComposeChannel(template.channel === 'EMAIL' ? 'EMAIL' : 'SMS');
                 setComposeBody(template.body);
-                setComposeSubject(template.subject ?? '');
               }}
               defaultValue=""
             >
               <option value="">Pick template</option>
               {templates
-                .filter((template) => template.channel === 'SMS' || template.channel === 'EMAIL')
+                .filter((template) => template.channel === 'SMS')
                 .map((template) => (
                   <option key={template.id} value={template.id}>
                     {template.name}
@@ -251,17 +237,11 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                 ))}
             </select>
           </label>
-          {composeChannel === 'EMAIL' ? (
-            <label>
-              Subject
-              <input value={composeSubject} onChange={(event) => setComposeSubject(event.target.value)} />
-            </label>
-          ) : null}
           <label>
             Message
             <textarea value={composeBody} onChange={(event) => setComposeBody(event.target.value)} rows={4} />
           </label>
-          <button type="submit" disabled={composeSubmitting}>{composeSubmitting ? 'Sending...' : 'Send message'}</button>
+          <button type="submit" disabled={composeSubmitting || !lead.phone}>{composeSubmitting ? 'Sending...' : lead.phone ? 'Send SMS' : 'Lead missing phone number'}</button>
         </form>
       </section>
 

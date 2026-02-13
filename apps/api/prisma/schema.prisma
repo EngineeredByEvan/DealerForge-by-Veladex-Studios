@@ -58,6 +58,14 @@ enum MessageDirection {
   INBOUND
 }
 
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  RECEIVED
+}
+
 enum TaskStatus {
   OPEN
   DONE
@@ -279,10 +287,15 @@ model Message {
   channel           MessageChannel
   direction         MessageDirection
   body              String
-  status            String
+  status            MessageStatus
   sentAt            DateTime?
   actorUserId       String?
+  provider          String?
   providerMessageId String?
+  errorCode         String?
+  errorMessage      String?
+  toPhone           String?
+  fromPhone         String?
   callDurationSec   Int?
   callOutcome       String?
 

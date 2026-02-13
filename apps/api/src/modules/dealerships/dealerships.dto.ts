@@ -28,6 +28,22 @@ export class CreateDealershipDto {
   @IsOptional()
   @IsObject()
   businessHours?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  twilioMessagingServiceSid?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioFromPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioAccountSid?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioAuthToken?: string;
 }
 
 export class UpdateDealershipDto {
@@ -54,6 +70,22 @@ export class UpdateDealershipDto {
   @IsOptional()
   @IsObject()
   businessHours?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  twilioMessagingServiceSid?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioFromPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioAccountSid?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioAuthToken?: string;
 }
 
 export class UpdateDealershipSettingsDto {
@@ -75,6 +107,22 @@ export class UpdateDealershipSettingsDto {
   @IsOptional()
   @IsObject()
   businessHours?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
+  twilioMessagingServiceSid?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioFromPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioAccountSid?: string;
+
+  @IsOptional()
+  @IsString()
+  twilioAuthToken?: string;
 }
 
 export class ListDealershipsDto {
