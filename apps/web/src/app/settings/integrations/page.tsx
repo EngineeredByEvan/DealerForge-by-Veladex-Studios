@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { DataTableShell } from '@/components/layout/data-table';
 import { FormField } from '@/components/layout/form-field';
 import { PageHeader } from '@/components/layout/page-header';
@@ -13,6 +13,7 @@ import { Table } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
   CreateIntegrationPayload,
+  ImportCsvResult,
   Integration,
   IntegrationProvider,
   createIntegration,
@@ -23,6 +24,7 @@ import {
 import { pushCsvImportNotification } from '@/lib/notifications';
 
 const PROVIDERS: IntegrationProvider[] = ['GENERIC', 'AUTOTRADER', 'CARGURUS', 'OEM_FORM', 'REFERRAL'];
+const CSV_TEMPLATE = ['firstName,lastName,email,phone,vehicleInterest', 'Alex,Rivera,alex@example.com,5550001,2024 CX-5'].join('\n');
 
 export default function SettingsIntegrationsPage(): JSX.Element {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -32,7 +34,7 @@ export default function SettingsIntegrationsPage(): JSX.Element {
   const [provider, setProvider] = useState<IntegrationProvider>('GENERIC');
   const [webhookSecret, setWebhookSecret] = useState<string>('');
   const [csv, setCsv] = useState<string>('');
-  const [importSummary, setImportSummary] = useState<string>('');
+  const [importResult, setImportResult] = useState<ImportCsvResult | null>(null);
 
   async function loadIntegrations(): Promise<void> {
     setLoading(true);
@@ -75,13 +77,11 @@ export default function SettingsIntegrationsPage(): JSX.Element {
   async function onImportCsv(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setError('');
-    setImportSummary('');
+    setImportResult(null);
 
     try {
       const result = await importIntegrationsCsv({ csv });
-      setImportSummary(
-        `Imported ${result.successCount}/${result.totalRows} rows (${result.failureCount} failed).`
-      );
+      setImportResult(result);
       const dealershipId = getSelectedDealershipId();
       if (dealershipId) {
         pushCsvImportNotification(
@@ -91,15 +91,66 @@ export default function SettingsIntegrationsPage(): JSX.Element {
       }
       setCsv('');
       await loadIntegrations();
-    } catch {
+    } catch (importError) {
+      if (importError instanceof Error && importError.message.includes('header')) {
+        setError(`CSV header is invalid. Use this template:\n${CSV_TEMPLATE}`);
+        return;
+      }
       setError('Unable to import CSV.');
     }
+  }
+
+  const importSummary = useMemo(() => {
+    if (!importResult) {
+      return '';
+    }
+
+    return `Imported ${importResult.successCount}/${importResult.totalRows} rows (${importResult.failureCount} failed).`;
+  }, [importResult]);
+
+  function buildFailuresCsv(): string {
+    if (!importResult || importResult.failures.length === 0) {
+      return '';
+    }
+
+    const lines = ['row,field,message'];
+    for (const failure of importResult.failures) {
+      for (const fieldError of failure.errors) {
+        const escaped = fieldError.message.replace(/"/g, '""');
+        lines.push(`${failure.row},${fieldError.field},"${escaped}"`);
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  function downloadFailures(kind: 'csv' | 'json'): void {
+    if (!importResult || importResult.failures.length === 0) {
+      return;
+    }
+
+    const payload = kind === 'csv' ? buildFailuresCsv() : JSON.stringify(importResult.failures, null, 2);
+    const blob = new Blob([payload], { type: kind === 'csv' ? 'text/csv' : 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `csv-import-failures.${kind}`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function copyErrors(): Promise<void> {
+    if (!importResult || importResult.failures.length === 0) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(JSON.stringify(importResult.failures, null, 2));
   }
 
   return (
     <div className="grid" style={{ gap: 20 }}>
       <PageHeader title="Integrations" subtitle="Manage lead sources and import records through clean, reliable workflows." />
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="error" style={{ whiteSpace: 'pre-wrap' }}>{error}</p> : null}
 
       <SectionCard title="Create Integration">
         <form onSubmit={onCreate} className="form-grid">
@@ -123,13 +174,38 @@ export default function SettingsIntegrationsPage(): JSX.Element {
       <SectionCard title="CSV Import">
         <form onSubmit={onImportCsv} className="grid">
           <FormField label="CSV payload" htmlFor="csv" description="Paste CSV rows with lead data.">
-            <Textarea id="csv" required rows={8} value={csv} onChange={(event) => setCsv(event.target.value)} placeholder={[ 'firstName,lastName,email,phone,vehicleInterest', 'Alex,Rivera,alex@example.com,5550001,2024 CX-5' ].join('\n')} />
+            <Textarea id="csv" required rows={8} value={csv} onChange={(event) => setCsv(event.target.value)} placeholder={CSV_TEMPLATE} />
           </FormField>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button type="submit">Import CSV</Button>
             {importSummary ? <Badge>{importSummary}</Badge> : null}
+            <Button type="button" variant="ghost" onClick={() => void copyErrors()} disabled={!importResult || importResult.failures.length === 0}>Copy errors</Button>
+            <Button type="button" variant="ghost" onClick={() => downloadFailures('csv')} disabled={!importResult || importResult.failures.length === 0}>Download errors CSV</Button>
+            <Button type="button" variant="ghost" onClick={() => downloadFailures('json')} disabled={!importResult || importResult.failures.length === 0}>Download errors JSON</Button>
           </div>
         </form>
+
+        {importResult && importResult.failures.length > 0 ? (
+          <div style={{ marginTop: 12 }}>
+            <p><strong>Failed rows</strong></p>
+            <Table>
+              <thead>
+                <tr>
+                  <th>Row</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importResult.failures.map((failure) => (
+                  <tr key={`failure-${failure.row}`}>
+                    <td>{failure.row}</td>
+                    <td>{failure.errors.map((entry) => `${entry.field}: ${entry.message}`).join('; ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard title="Configured integrations">

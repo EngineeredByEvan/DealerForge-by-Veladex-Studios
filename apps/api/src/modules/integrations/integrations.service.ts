@@ -1,4 +1,11 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  UnauthorizedException
+} from '@nestjs/common';
 import { IntegrationProvider, Prisma } from '@prisma/client';
 import { toPrismaJson } from '../../common/prisma/prisma-json';
 import { randomUUID, timingSafeEqual } from 'crypto';
@@ -9,6 +16,7 @@ import { EventLogService } from '../event-log/event-log.service';
 import { GenericAdapter } from './adapters/generic.adapter';
 import { IntegrationAdapter, LeadInboundDto } from './adapters/integration-adapter.interface';
 import { CreateIntegrationDto } from './integrations.dto';
+import { CsvImportFailure, CsvImportSuccess, LeadStatusValue, LeadTypeValue, normalizeCsvRow, parseCsvRows } from './csv-import';
 
 const INTEGRATION_INCLUDE = {
   _count: {
@@ -20,9 +28,11 @@ const INTEGRATION_INCLUDE = {
 
 @Injectable()
 export class IntegrationsService {
+  private readonly logger = new Logger(IntegrationsService.name);
   private readonly genericAdapter = new GenericAdapter();
   private readonly webhookRateLimitWindowMs = 60_000;
   private readonly webhookRateLimitMax = 60;
+  private readonly csvImportMaxRows = 2_000;
   private readonly webhookHits = new Map<string, number[]>();
 
   constructor(
@@ -62,7 +72,15 @@ export class IntegrationsService {
     integrationId?: string,
     fallbackSource?: string
   ) {
-    const rows = this.parseCsv(csv);
+    // Root cause for 0/50 imports: previous parser split on commas and required exact key names.
+    // Quoted values/BOM/header variants (e.g. firstname, lead_source) were not normalized, which made
+    // email/phone appear missing for every row and adapter validation rejected all rows.
+    const parsedCsv = parseCsvRows(csv);
+
+    if (parsedCsv.rows.length > this.csvImportMaxRows) {
+      throw new BadRequestException(`CSV import supports up to ${this.csvImportMaxRows} rows per request`);
+    }
+
     const integration = integrationId
       ? await this.prisma.integration.findFirst({
           where: {
@@ -79,9 +97,14 @@ export class IntegrationsService {
 
     let successCount = 0;
     let failureCount = 0;
+    const successes: CsvImportSuccess[] = [];
+    const failures: CsvImportFailure[] = [];
 
-    for (const row of rows) {
+    for (let rowIndex = 0; rowIndex < parsedCsv.rows.length; rowIndex += 1) {
+      const rowNumber = rowIndex + 2;
+      const row = parsedCsv.rows[rowIndex];
       const provider = integration?.provider ?? IntegrationProvider.GENERIC;
+
       const event = await this.prisma.integrationEvent.create({
         data: {
           dealershipId,
@@ -92,10 +115,62 @@ export class IntegrationsService {
         }
       });
 
+      const { normalized, errors } = normalizeCsvRow(row);
+      if (errors.length > 0) {
+        await this.prisma.integrationEvent.update({
+          where: { id: event.id },
+          data: {
+            parsedOk: false,
+            error: errors.map((entry) => `${entry.field}: ${entry.message}`).join('; ')
+          }
+        });
+
+        failureCount += 1;
+        failures.push({
+          row: rowNumber,
+          raw: row,
+          errors
+        });
+        continue;
+      }
+
       try {
         const adapter = this.resolveAdapter(provider);
-        const leadPayload = adapter.parseInbound({ ...row, source: row.source ?? fallbackSource });
-        const lead = await this.createLeadFromInbound(dealershipId, leadPayload, integration?.name);
+        const leadPayload = adapter.parseInbound({
+          ...row,
+          ...normalized,
+          source: normalized.source ?? fallbackSource
+        });
+
+        const duplicateReason = await this.findDuplicateLeadReason(
+          dealershipId,
+          leadPayload.email,
+          leadPayload.phone
+        );
+
+        if (duplicateReason) {
+          const duplicateError = `skipped duplicate (${duplicateReason})`;
+          await this.prisma.integrationEvent.update({
+            where: { id: event.id },
+            data: {
+              parsedOk: false,
+              error: duplicateError
+            }
+          });
+          failureCount += 1;
+          failures.push({
+            row: rowNumber,
+            raw: row,
+            errors: [{ field: duplicateReason, message: duplicateError }]
+          });
+          continue;
+        }
+
+        const lead = await this.createLeadFromInbound(dealershipId, {
+          ...leadPayload,
+          leadType: normalized.leadType,
+          status: normalized.status
+        }, integration?.name);
 
         await this.prisma.integrationEvent.update({
           where: { id: event.id },
@@ -106,17 +181,46 @@ export class IntegrationsService {
             error: null
           }
         });
+
         successCount += 1;
+        successes.push({
+          row: rowNumber,
+          leadId: lead.id,
+          email: lead.email ?? undefined,
+          phone: lead.phone ?? undefined
+        });
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown parse error';
         await this.prisma.integrationEvent.update({
           where: { id: event.id },
           data: {
             parsedOk: false,
-            error: error instanceof Error ? error.message : 'Unknown parse error'
+            error: message
           }
         });
+
         failureCount += 1;
+        failures.push({
+          row: rowNumber,
+          raw: row,
+          errors: [{ field: 'row', message }]
+        });
       }
+    }
+
+    this.logger.log(
+      `CSV import completed dealershipId=${dealershipId} totalRows=${parsedCsv.rows.length} successCount=${successCount} failureCount=${failureCount}`
+    );
+
+    if (failures.length > 0) {
+      const topFailures = failures.slice(0, 3).map((entry) => ({
+        row: entry.row,
+        reasons: entry.errors.map((error) => `${error.field}:${error.message}`)
+      }));
+
+      this.logger.warn(
+        `CSV import had validation failures dealershipId=${dealershipId} samples=${JSON.stringify(topFailures)}`
+      );
     }
 
     await this.eventLogService.emit({
@@ -126,16 +230,18 @@ export class IntegrationsService {
       entityId: integration?.id ?? 'csv_import',
       payload: {
         integrationId: integration?.id ?? null,
-        totalRows: rows.length,
+        totalRows: parsedCsv.rows.length,
         successCount,
         failureCount
       }
     });
 
     return {
-      totalRows: rows.length,
+      totalRows: parsedCsv.rows.length,
       successCount,
-      failureCount
+      failureCount,
+      successes,
+      failures
     };
   }
 
@@ -253,7 +359,7 @@ export class IntegrationsService {
 
   private async createLeadFromInbound(
     dealershipId: string,
-    payload: LeadInboundDto,
+    payload: LeadInboundDto & { leadType?: LeadTypeValue; status?: LeadStatusValue },
     integrationName?: string
   ) {
     return this.leadsService.createLead(dealershipId, {
@@ -262,8 +368,47 @@ export class IntegrationsService {
       email: payload.email,
       phone: payload.phone,
       vehicleInterest: payload.vehicleInterest,
-      source: payload.source ?? integrationName
+      source: payload.source ?? integrationName,
+      leadType: payload.leadType,
+      status: payload.status
     });
+  }
+
+  private async findDuplicateLeadReason(
+    dealershipId: string,
+    email?: string,
+    phone?: string
+  ): Promise<'email' | 'phone' | null> {
+    if (email) {
+      const existingByEmail = await this.prisma.lead.findFirst({
+        where: {
+          dealershipId,
+          email: {
+            equals: email,
+            mode: 'insensitive'
+          }
+        },
+        select: { id: true }
+      });
+      if (existingByEmail) {
+        return 'email';
+      }
+    }
+
+    if (phone) {
+      const existingByPhone = await this.prisma.lead.findFirst({
+        where: {
+          dealershipId,
+          phone
+        },
+        select: { id: true }
+      });
+      if (existingByPhone) {
+        return 'phone';
+      }
+    }
+
+    return null;
   }
 
   private toIntegrationProvider(providerRaw: string): IntegrationProvider {
@@ -273,36 +418,6 @@ export class IntegrationsService {
     }
 
     return normalized as IntegrationProvider;
-  }
-
-  private parseCsv(csv: string): Array<Record<string, string>> {
-    const lines = csv
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-
-    if (lines.length < 2) {
-      throw new BadRequestException('CSV must include header and at least one data row');
-    }
-
-    const headers = lines[0].split(',').map((header) => header.trim());
-    if (headers.some((header) => header.length === 0)) {
-      throw new BadRequestException('CSV header contains empty columns');
-    }
-
-    return lines.slice(1).map((line, index) => {
-      const columns = line.split(',').map((column) => column.trim());
-      if (columns.length !== headers.length) {
-        throw new BadRequestException(`CSV row ${index + 2} has unexpected column count`);
-      }
-
-      const row: Record<string, string> = {};
-      headers.forEach((header, headerIndex) => {
-        row[header] = columns[headerIndex] ?? '';
-      });
-
-      return row;
-    });
   }
 
   private constantTimeSecretMatch(expected: string, provided: string): boolean {

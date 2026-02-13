@@ -856,19 +856,53 @@ export async function createIntegration(payload: CreateIntegrationPayload): Prom
   return (await response.json()) as Integration;
 }
 
+export type CsvImportErrorItem = { field: string; message: string };
+
+export type CsvImportFailure = {
+  row: number;
+  raw: Record<string, string>;
+  errors: CsvImportErrorItem[];
+};
+
+export type CsvImportSuccess = {
+  row: number;
+  leadId: string;
+  email?: string;
+  phone?: string;
+};
+
+export type ImportCsvResult = {
+  totalRows: number;
+  successCount: number;
+  failureCount: number;
+  successes: CsvImportSuccess[];
+  failures: CsvImportFailure[];
+};
+
 export async function importIntegrationsCsv(
   payload: ImportCsvPayload
-): Promise<{ totalRows: number; successCount: number; failureCount: number }> {
+): Promise<ImportCsvResult> {
   const response = await apiRequest('/integrations/import/csv', {
     method: 'POST',
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) {
-    throw new Error('Unable to import integrations CSV');
+    let message = 'Unable to import integrations CSV';
+    try {
+      const payload = (await response.json()) as { message?: string | string[] };
+      if (typeof payload.message === 'string') {
+        message = payload.message;
+      } else if (Array.isArray(payload.message) && payload.message.length > 0) {
+        message = payload.message.join('; ');
+      }
+    } catch {
+      // ignore parse errors and keep fallback message
+    }
+    throw new Error(message);
   }
 
-  return (await response.json()) as { totalRows: number; successCount: number; failureCount: number };
+  return (await response.json()) as ImportCsvResult;
 }
 
 export type AiChannel = 'SMS' | 'EMAIL';
