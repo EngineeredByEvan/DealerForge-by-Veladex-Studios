@@ -132,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
 
   const navItems = [
     ...baseNavItems,
-    ...(platformRole === 'ADMIN' ? [{ href: '/settings/dealerships', label: 'Dealership Settings' }] : []),
+    ...(platformRole === 'ADMIN' || platformRole === 'OPERATOR' ? [{ href: '/platform', label: 'Platform' }] : []),
     ...(canManageTeam ? [{ href: '/settings/team', label: 'Team' }] : []),
     ...(canManageTeam || platformRole === 'OPERATOR' ? [{ href: '/settings/dealership', label: 'Dealership Settings' }] : [])
   ].filter((item) => canAccess(item.href, authUser, selectedDealership || null));
