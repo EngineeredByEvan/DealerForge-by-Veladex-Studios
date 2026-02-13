@@ -131,6 +131,11 @@ model Dealership {
   communicationTemplates CommunicationTemplate[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+  twilioAccountSid         String?
+  twilioAuthToken          String?
+  twilioMessagingServiceSid String?
+  twilioFromPhone          String?
+
 }
 
 model AuditLog {
