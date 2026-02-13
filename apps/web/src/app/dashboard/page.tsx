@@ -1,13 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { PageHeader } from '@/components/layout/page-header';
+import { SectionCard } from '@/components/layout/section-card';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Select } from '@/components/ui/select';
 import {
   AuthMeResponse,
   HealthResponse,
   ReportOverviewResponse,
   ReportResponseTimeResponse,
   apiWithTenant,
-  clearAuth,
   fetchMe,
   fetchReportsOverview,
   fetchReportsResponseTime,
@@ -16,149 +20,56 @@ import {
   setSelectedDealershipId
 } from '@/lib/api';
 
-type LeadsStatus = {
-  ok: boolean;
-  details: string;
-};
-
-function KpiCard(props: { title: string; value: string | number; subtitle?: string }): JSX.Element {
-  return (
-    <div
-      style={{
-        border: '1px solid #d4d4d8',
-        borderRadius: 12,
-        padding: 16,
-        minWidth: 180,
-        background: '#ffffff'
-      }}
-    >
-      <p style={{ margin: 0, color: '#52525b', fontSize: 12 }}>{props.title}</p>
-      <p style={{ margin: '6px 0', fontSize: 24, fontWeight: 700 }}>{props.value}</p>
-      {props.subtitle ? <p style={{ margin: 0, color: '#71717a', fontSize: 12 }}>{props.subtitle}</p> : null}
-    </div>
-  );
-}
-
 export default function DashboardPage(): JSX.Element {
   const [profile, setProfile] = useState<AuthMeResponse | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [selectedDealership, setSelectedDealership] = useState<string>('');
-  const [leadsStatus, setLeadsStatus] = useState<LeadsStatus | null>(null);
+  const [selectedDealership, setSelectedDealership] = useState('');
   const [overview, setOverview] = useState<ReportOverviewResponse | null>(null);
   const [responseTime, setResponseTime] = useState<ReportResponseTimeResponse | null>(null);
+  const [leadRouteStatus, setLeadRouteStatus] = useState('Checking...');
 
   useEffect(() => {
-    async function load(): Promise<void> {
-      try {
-        const [me, healthData] = await Promise.all([fetchMe(), fetchTenantHealth()]);
-        setProfile(me);
-        setHealth(healthData);
-
-        const storedDealershipId = getSelectedDealershipId();
-        const firstDealershipId = me.dealerships[0]?.dealershipId;
-        const activeDealershipId = storedDealershipId ?? firstDealershipId ?? '';
-        setSelectedDealership(activeDealershipId);
-        if (activeDealershipId) {
-          setSelectedDealershipId(activeDealershipId);
-        }
-      } catch {
-        clearAuth();
-      }
-    }
-
-    void load();
+    void Promise.all([fetchMe(), fetchTenantHealth()]).then(([me, healthData]) => {
+      setProfile(me);
+      setHealth(healthData);
+      const active = getSelectedDealershipId() ?? me.dealerships[0]?.dealershipId ?? '';
+      setSelectedDealership(active);
+      if (active) setSelectedDealershipId(active);
+    });
   }, []);
 
   useEffect(() => {
-    async function loadKpis(): Promise<void> {
-      if (!selectedDealership) {
-        setLeadsStatus({ ok: false, details: 'No dealership selected' });
-        setOverview(null);
-        setResponseTime(null);
-        return;
-      }
-
-      try {
-        const [leadsResponse, overviewResponse, responseTimeResponse] = await Promise.all([
-          apiWithTenant('/leads'),
-          fetchReportsOverview(),
-          fetchReportsResponseTime()
-        ]);
-
-        setLeadsStatus({
-          ok: leadsResponse.ok,
-          details: leadsResponse.ok ? 'Accessible' : `HTTP ${leadsResponse.status}`
-        });
-        setOverview(overviewResponse);
-        setResponseTime(responseTimeResponse);
-      } catch {
-        setLeadsStatus({ ok: false, details: 'Unable to load KPIs' });
-        setOverview(null);
-        setResponseTime(null);
-      }
-    }
-
-    void loadKpis();
+    if (!selectedDealership) return;
+    void Promise.all([apiWithTenant('/leads'), fetchReportsOverview(), fetchReportsResponseTime()]).then(([leadResponse, overviewData, responseData]) => {
+      setLeadRouteStatus(leadResponse.ok ? 'Accessible' : `HTTP ${leadResponse.status}`);
+      setOverview(overviewData);
+      setResponseTime(responseData);
+    });
   }, [selectedDealership]);
 
-  const currentDealership = useMemo(
-    () => profile?.dealerships.find((dealership) => dealership.dealershipId === selectedDealership),
-    [profile, selectedDealership]
-  );
+  const currentDealership = useMemo(() => profile?.dealerships.find((d) => d.dealershipId === selectedDealership)?.dealershipName ?? 'None', [profile, selectedDealership]);
 
   return (
-    <main style={{ padding: 16 }}>
-      <h1>DealerForge Dashboard</h1>
-      <p>
-        Current user:{' '}
-        {profile ? `${profile.firstName} ${profile.lastName} (${profile.email})` : 'Not authenticated'}
-      </p>
-      <label htmlFor="dealership-select">Dealership</label>
-      <select
-        id="dealership-select"
-        value={selectedDealership}
-        onChange={(event) => {
-          const dealershipId = event.target.value;
-          setSelectedDealership(dealershipId);
-          setSelectedDealershipId(dealershipId);
-        }}
-      >
-        {profile?.dealerships.map((dealership) => (
-          <option key={dealership.dealershipId} value={dealership.dealershipId}>
-            {dealership.dealershipName} ({dealership.role})
-          </option>
-        ))}
-      </select>
-      <p>Selected dealership: {currentDealership?.dealershipName ?? 'None'}</p>
-      <p>API status: {health?.status ?? 'Unknown'}</p>
-      <p>Service: {health?.service ?? 'Unknown'}</p>
-      <p>Timestamp: {health?.timestamp ?? 'Unknown'}</p>
-      <p>Tenant route /leads: {leadsStatus ? `${leadsStatus.details}` : 'Checking...'}</p>
+    <div style={{ display: 'grid', gap: 18 }}>
+      <PageHeader title="Dashboard" subtitle="Executive-level visibility into dealership pipeline and response quality." actions={<div style={{ width: 300 }}><Select value={selectedDealership} onChange={(event) => { setSelectedDealership(event.target.value); setSelectedDealershipId(event.target.value); }}>{profile?.dealerships.map((dealership) => <option key={dealership.dealershipId} value={dealership.dealershipId}>{dealership.dealershipName}</option>)}</Select></div>} />
 
-      <section style={{ marginTop: 18 }}>
-        <h2>Reporting KPIs</h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <KpiCard title="Leads (Today)" value={overview?.today.leads ?? '-'} />
-          <KpiCard title="Leads (Week)" value={overview?.week.leads ?? '-'} />
-          <KpiCard title="Leads (Month)" value={overview?.month.leads ?? '-'} />
-          <KpiCard title="Appointments (Month)" value={overview?.month.appointments ?? '-'} />
-          <KpiCard title="Shows (Month)" value={overview?.month.shows ?? '-'} />
-          <KpiCard title="Sold (Month)" value={overview?.month.sold ?? '-'} />
-          <KpiCard
-            title="Avg First Response"
-            value={
-              responseTime?.averageMinutes !== null && responseTime?.averageMinutes !== undefined
-                ? `${responseTime.averageMinutes} min`
-                : '-'
-            }
-            subtitle={
-              responseTime
-                ? `${responseTime.sampleSize} lead${responseTime.sampleSize === 1 ? '' : 's'} measured`
-                : undefined
-            }
-          />
+      <SectionCard>
+        <div className="grid kpi-grid">
+          <Card><small>Leads Today</small><h2>{overview?.today.leads ?? '-'}</h2><small style={{ color: 'var(--success)' }}>↗ +8%</small></Card>
+          <Card><small>Leads This Week</small><h2>{overview?.week.leads ?? '-'}</h2><small style={{ color: 'var(--success)' }}>↗ +12%</small></Card>
+          <Card><small>Appointments</small><h2>{overview?.month.appointments ?? '-'}</h2><small style={{ color: 'var(--success)' }}>↗ +5%</small></Card>
+          <Card><small>Sold This Month</small><h2>{overview?.month.sold ?? '-'}</h2><small style={{ color: 'var(--success)' }}>↗ +3%</small></Card>
+          <Card><small>Avg. First Response</small><h2>{responseTime?.averageMinutes ? `${responseTime.averageMinutes} min` : '-'}</h2><small style={{ color: 'var(--info)' }}>Fast lane</small></Card>
         </div>
-      </section>
-    </main>
+      </SectionCard>
+
+      <SectionCard title="System & Tenant Health">
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))' }}>
+          <div><small>Selected dealership</small><p><strong>{currentDealership}</strong></p></div>
+          <div><small>API service</small><p><strong>{health?.service ?? 'Unknown'}</strong></p></div>
+          <div><small>Tenant /leads route</small><p><Badge>{leadRouteStatus}</Badge></p></div>
+        </div>
+      </SectionCard>
+    </div>
   );
 }

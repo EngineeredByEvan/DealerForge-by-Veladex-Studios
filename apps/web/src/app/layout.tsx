@@ -1,19 +1,21 @@
 import { ReactNode } from 'react';
 import { AppShell } from '@/components/app-shell';
+import { ToastProvider } from '@/components/ui/toast';
+import './globals.css';
 
 export const metadata = {
   title: 'DealerForge',
   description: 'DealerForge CRM + AI Automation'
 };
 
-interface RootLayoutProps {
-  children: ReactNode;
-}
-
-export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
+export default function RootLayout({ children }: { children: ReactNode }): JSX.Element {
   return (
     <html lang="en">
-      <body style={{ fontFamily: 'Arial, sans-serif', margin: 0, padding: 16 }}><AppShell />{children}</body>
+      <body>
+        <ToastProvider>
+          <AppShell>{children}</AppShell>
+        </ToastProvider>
+      </body>
     </html>
   );
 }

@@ -1,0 +1,5 @@
+import { ReactNode } from 'react';
+
+export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }): JSX.Element {
+  return <header className="page-header"><div><h1 className="page-title">{title}</h1>{subtitle ? <p className="page-subtitle">{subtitle}</p> : null}</div>{actions}</header>;
+}
