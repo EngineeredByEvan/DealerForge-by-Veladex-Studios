@@ -15,8 +15,8 @@ describe('Provisioning flows (e2e)', () => {
       { id: 'u-sales', email: 'sales@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Sales', lastName: 'Rep', isPlatformAdmin: false, isPlatformOperator: false },
       { id: 'u-operator', email: 'operator@test.com', passwordHash: bcrypt.hashSync('Password123!', 10), refreshTokenHash: null as string | null, firstName: 'Plat', lastName: 'Operator', isPlatformAdmin: false, isPlatformOperator: true }
     ],
-    autoGroups: [{ id: 'ag-1', name: 'Default Auto Group', createdAt: new Date() }],
-    dealerships: [{ id: 'd-1', autoGroupId: 'ag-1', name: 'Store One', slug: 'store-one', timezone: 'UTC', status: 'ACTIVE', createdAt: new Date(), updatedAt: new Date() }],
+    dealerGroups: [{ id: 'ag-1', name: 'Default Dealer Group', createdAt: new Date() }],
+    dealerships: [{ id: 'd-1', dealerGroupId: 'ag-1', name: 'Store One', slug: 'store-one', timezone: 'UTC', status: 'ACTIVE', createdAt: new Date(), updatedAt: new Date() }],
     memberships: [
       { id: 'm-1', userId: 'u-dealer-admin', dealershipId: 'd-1', role: 'ADMIN', isActive: true, createdAt: new Date(), updatedAt: new Date() },
       { id: 'm-2', userId: 'u-sales', dealershipId: 'd-1', role: 'SALES', isActive: true, createdAt: new Date(), updatedAt: new Date() }
@@ -68,9 +68,15 @@ describe('Provisioning flows (e2e)', () => {
         return found;
       })
     },
-    autoGroup: {
-      findFirst: jest.fn(async () => state.autoGroups[0]),
-      create: jest.fn(async ({ data }: any) => ({ id: 'ag-2', ...data }))
+    dealerGroup: {
+      upsert: jest.fn(async ({ where, create }: any) => {
+        const found = state.dealerGroups.find((group) => group.name === where.name);
+        if (found) return found;
+
+        const group = { id: `ag-${state.dealerGroups.length + 1}`, createdAt: new Date(), ...create };
+        state.dealerGroups.push(group);
+        return group;
+      })
     },
     dealership: {
       create: jest.fn(async ({ data }: any) => {
@@ -124,24 +130,26 @@ describe('Provisioning flows (e2e)', () => {
     await app.close();
   });
 
-  it('platform operator can create dealership', async () => {
-    const loginRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'operator@test.com', password: 'Password123!' }).expect(201);
+  it('dealership admin can create dealership', async () => {
+    const loginRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'dealer-admin@test.com', password: 'Password123!' }).expect(201);
 
     await request(app.getHttpServer())
       .post('/api/v1/platform/dealerships')
       .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
-      .send({ name: 'Store Two', slug: 'store-two', timezone: 'America/Toronto' })
+      .set('x-dealership-id', 'd-1')
+      .send({ name: 'Store Two', slug: 'store-two', timezone: 'America/Toronto', dealerGroupName: 'Plaza Auto Group' })
       .expect(201);
   });
 
-  it('platform admin can create dealership', async () => {
+  it('platform admin cannot create dealership', async () => {
     const loginRes = await request(app.getHttpServer()).post('/api/v1/auth/login').send({ email: 'platform@test.com', password: 'Password123!' }).expect(201);
 
     await request(app.getHttpServer())
       .post('/api/v1/platform/dealerships')
       .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
-      .send({ name: 'Store Two', slug: 'store-two', timezone: 'America/Toronto' })
-      .expect(201);
+      .set('x-dealership-id', 'd-1')
+      .send({ name: 'Store Two', slug: 'store-two', timezone: 'America/Toronto', dealerGroupName: 'Plaza Auto Group' })
+      .expect(403);
   });
 
   it('dealership admin can manage team only inside their dealership', async () => {
@@ -166,6 +174,7 @@ describe('Provisioning flows (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/platform/dealerships')
       .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .set('x-dealership-id', 'd-1')
       .send({ name: 'Store Four', slug: 'store-four', timezone: 'UTC' })
       .expect(403);
   });

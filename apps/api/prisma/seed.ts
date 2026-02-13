@@ -1,31 +1,52 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { DealershipStatus, PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+const PLAZA_AUTO_GROUP_NAME = 'Plaza Auto Group';
+
+const plazaRooftops = [
+  { name: 'Bolton Kia', slug: 'bolton-kia' },
+  { name: 'Cobourg Kia', slug: 'cobourg-kia' },
+  { name: 'Plaza Kia', slug: 'plaza-kia' },
+  { name: 'Orillia Kia', slug: 'orillia-kia' },
+  { name: 'Orillia Volkswagen', slug: 'orillia-volkswagen' },
+  { name: 'Subaru of Orillia', slug: 'subaru-of-orillia' },
+  { name: 'HWY 11 Ram', slug: 'hwy-11-ram' },
+  { name: 'Get Auto Finance', slug: 'get-auto-finance' }
+] as const;
+
 async function main(): Promise<void> {
   const passwordHash = await bcrypt.hash('Password123!', 10);
 
-  const autoGroup = await prisma.autoGroup.upsert({
-    where: { id: 'plaza-auto-group' },
-    update: { name: 'Plaza Auto Group' },
+  const dealerGroup = await prisma.dealerGroup.upsert({
+    where: { name: PLAZA_AUTO_GROUP_NAME },
+    update: {},
     create: {
-      id: 'plaza-auto-group',
-      name: 'Plaza Auto Group'
+      name: PLAZA_AUTO_GROUP_NAME
     }
   });
 
-  const dealership = await prisma.dealership.upsert({
-    where: { id: 'woodstock-mazda' },
-    update: { name: 'Woodstock Mazda', autoGroupId: autoGroup.id, slug: 'woodstock-mazda', timezone: 'America/Toronto' },
-    create: {
-      id: 'woodstock-mazda',
-      name: 'Woodstock Mazda',
-      slug: 'woodstock-mazda',
-      timezone: 'America/Toronto',
-      autoGroupId: autoGroup.id
-    }
-  });
+  for (const rooftop of plazaRooftops) {
+    await prisma.dealership.upsert({
+      where: { slug: rooftop.slug },
+      update: {
+        name: rooftop.name,
+        dealerGroupId: dealerGroup.id,
+        timezone: 'America/Toronto',
+        status: DealershipStatus.ACTIVE
+      },
+      create: {
+        name: rooftop.name,
+        slug: rooftop.slug,
+        timezone: 'America/Toronto',
+        status: DealershipStatus.ACTIVE,
+        dealerGroupId: dealerGroup.id
+      }
+    });
+  }
+
+  const primaryDealership = await prisma.dealership.findUniqueOrThrow({ where: { slug: 'plaza-kia' } });
 
   const users = [
     { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: true, isPlatformOperator: false },
@@ -59,7 +80,7 @@ async function main(): Promise<void> {
       where: {
         userId_dealershipId: {
           userId: user.id,
-          dealershipId: dealership.id
+          dealershipId: primaryDealership.id
         }
       },
       update: {
@@ -67,7 +88,7 @@ async function main(): Promise<void> {
       },
       create: {
         userId: user.id,
-        dealershipId: dealership.id,
+        dealershipId: primaryDealership.id,
         role: userInput.role
       }
     });
