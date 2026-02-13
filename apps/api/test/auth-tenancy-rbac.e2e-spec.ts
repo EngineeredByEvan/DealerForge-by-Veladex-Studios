@@ -219,6 +219,30 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
     expect(updateRes.body.phone).toBe('5551112222');
   });
 
+  it('persists businessHours JSON when dealership admin updates settings', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'admin@test.com', password: 'Password123!' })
+      .expect(201);
+
+    const businessHours = {
+      monday: { open: '09:00', close: '18:00' },
+      tuesday: { open: '09:00', close: '18:00' }
+    };
+
+    const updateRes = await request(app.getHttpServer())
+      .patch('/api/v1/dealerships/d-1')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({ businessHours })
+      .expect(200);
+
+    expect(updateRes.body.businessHours).toEqual(businessHours);
+    expect(state.dealerships.find((candidate) => candidate.id === 'd-1')?.businessHours).toEqual(
+      businessHours
+    );
+  });
+
   it('allows dealership admin to update their own dealership settings with tenant header', async () => {
     const loginRes = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
