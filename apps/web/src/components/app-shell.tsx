@@ -13,6 +13,7 @@ import {
   fetchAppointments,
   fetchLeads,
   fetchMe,
+  fetchMessagesByLead,
   getSelectedDealershipId,
   setSelectedDealershipId
 } from '@/lib/api';
@@ -22,6 +23,7 @@ import {
   getNotifications,
   ingestAppointmentNotifications,
   ingestLeadNotifications,
+  ingestMessageNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   subscribeToNotificationUpdates
@@ -86,9 +88,11 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     setNotifications(getNotifications(selectedDealership));
 
     void Promise.all([fetchLeads(), fetchAppointments()])
-      .then(([leads, appointments]) => {
+      .then(async ([leads, appointments]) => {
         ingestLeadNotifications(selectedDealership, leads);
         ingestAppointmentNotifications(selectedDealership, appointments);
+        const messageBatches = await Promise.all(leads.slice(0, 20).map((lead) => fetchMessagesByLead(lead.id).catch(() => [])));
+        ingestMessageNotifications(selectedDealership, messageBatches.flat());
         setNotifications(getNotifications(selectedDealership));
       })
       .catch(() => {
