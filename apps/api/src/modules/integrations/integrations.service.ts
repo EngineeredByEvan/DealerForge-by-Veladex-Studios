@@ -104,6 +104,7 @@ export class IntegrationsService {
       const rowNumber = rowIndex + 2;
       const row = parsedCsv.rows[rowIndex];
       const provider = integration?.provider ?? IntegrationProvider.GENERIC;
+      const defaultSource = fallbackSource ?? 'CSV Import';
 
       const event = await this.prisma.integrationEvent.create({
         data: {
@@ -139,7 +140,7 @@ export class IntegrationsService {
         const leadPayload = adapter.parseInbound({
           ...row,
           ...normalized,
-          source: normalized.source ?? fallbackSource
+          source: normalized.source ?? defaultSource
         });
 
         const duplicateReason = await this.findDuplicateLeadReason(
@@ -241,7 +242,10 @@ export class IntegrationsService {
       successCount,
       failureCount,
       successes,
-      failures
+      failures: failures.map((failure) => ({
+        row: failure.row,
+        error: failure.errors.map((entry) => `${entry.field}: ${entry.message}`).join('; ')
+      }))
     };
   }
 

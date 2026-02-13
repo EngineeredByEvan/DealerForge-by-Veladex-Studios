@@ -65,6 +65,7 @@ export type Lead = {
   soldAt?: string | null;
   leadType?: LeadType;
   leadScore?: number | null;
+  leadScoreUpdatedAt?: string | null;
   source?: { id: string; name: string } | null;
 };
 
@@ -423,40 +424,40 @@ export async function fetchMessagesByLead(leadId: string): Promise<Message[]> {
 export async function sendSmsMessage(
   leadId: string,
   payload: { body: string; toPhone?: string; templateId?: string }
-): Promise<Message> {
+): Promise<{ message: Message; lead: Lead }> {
   const response = await apiRequest(`/communications/leads/${leadId}/messages/sms`, {
     method: 'POST',
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) throw new Error('Unable to send SMS message');
-  return (await response.json()) as Message;
+  return (await response.json()) as { message: Message; lead: Lead };
 }
 
 export async function sendMessage(
   leadId: string,
   payload: { channel: Extract<MessageChannel, 'SMS' | 'EMAIL' | 'NOTE'>; body: string; subject?: string }
-): Promise<Message> {
+): Promise<{ message: Message; lead: Lead }> {
   const response = await apiRequest(`/communications/leads/${leadId}/send`, {
     method: 'POST',
     body: JSON.stringify({ ...payload, direction: 'OUTBOUND' })
   });
 
   if (!response.ok) throw new Error('Unable to send message');
-  return (await response.json()) as Message;
+  return (await response.json()) as { message: Message; lead: Lead };
 }
 
 export async function logCall(
   leadId: string,
   payload: { direction?: MessageDirection; durationSec?: number; outcome: string; body?: string }
-): Promise<Message> {
+): Promise<{ message: Message; lead: Lead }> {
   const response = await apiRequest(`/communications/leads/${leadId}/calls`, {
     method: 'POST',
     body: JSON.stringify(payload)
   });
 
   if (!response.ok) throw new Error('Unable to log call');
-  return (await response.json()) as Message;
+  return (await response.json()) as { message: Message; lead: Lead };
 }
 
 export async function fetchTemplates(): Promise<CommunicationTemplate[]> {
@@ -714,7 +715,7 @@ export async function fetchAppointments(filters?: AppointmentFilters): Promise<A
   return (await response.json()) as Appointment[];
 }
 
-export async function createAppointment(payload: CreateAppointmentPayload): Promise<Appointment> {
+export async function createAppointment(payload: CreateAppointmentPayload): Promise<Appointment & { lead?: Lead | null }> {
   const response = await apiRequest('/appointments', {
     method: 'POST',
     body: JSON.stringify(payload)
@@ -724,7 +725,7 @@ export async function createAppointment(payload: CreateAppointmentPayload): Prom
     throw new Error('Unable to create appointment');
   }
 
-  return (await response.json()) as Appointment;
+  return (await response.json()) as Appointment & { lead?: Lead | null };
 }
 
 export async function updateAppointment(

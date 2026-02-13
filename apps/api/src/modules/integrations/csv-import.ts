@@ -90,6 +90,7 @@ const HEADER_ALIASES: Record<string, keyof Omit<NormalizedLeadRow, 'leadType' | 
   source: 'source',
   leadsource: 'source',
   lead_source: 'source',
+  provider: 'source',
   leadtype: 'leadType',
   lead_type: 'leadType',
   status: 'status'
@@ -120,7 +121,8 @@ function normalizePhone(raw: string | undefined): string | undefined {
 }
 
 function canonicalHeader(header: string): string {
-  return header.replace(/[\s\-]/g, '').trim();
+  // Root cause: case-sensitive header canonicalization missed aliases like "Vehicle" and "LeadSource".
+  return header.replace(/[\s\-]/g, '').trim().toLowerCase();
 }
 
 function parseCsvLine(line: string): string[] {

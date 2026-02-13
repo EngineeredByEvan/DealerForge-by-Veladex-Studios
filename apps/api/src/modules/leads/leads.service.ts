@@ -4,6 +4,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
 import { AssignLeadDto, CreateLeadDto, ListLeadsQueryDto, UpdateLeadDto } from './leads.dto';
+import { LeadScoringService } from './lead-scoring.service';
+import { LEAD_SUMMARY_INCLUDE } from './lead-summary';
 
 const LEAD_INCLUDE = {
   assignedToUser: {
@@ -38,7 +40,8 @@ export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
-    private readonly eventLogService: EventLogService
+    private readonly eventLogService: EventLogService,
+    private readonly leadScoringService: LeadScoringService
   ) {}
 
   async listByDealership(dealershipId: string, query: ListLeadsQueryDto) {
@@ -69,7 +72,9 @@ export class LeadsService {
 
     return this.prisma.lead.findMany({
       where,
-      include: LEAD_INCLUDE,
+      // Root cause: list rows were hydrated from an include that varied across endpoints,
+      // so vehicle/source/score were not guaranteed to be returned to the web app.
+      include: LEAD_SUMMARY_INCLUDE,
       orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }]
     });
   }
@@ -122,7 +127,7 @@ export class LeadsService {
 
     await this.validateAssignee(dealershipId, assignedToUserId);
 
-    const lead = await this.prisma.lead.create({
+    const created = await this.prisma.lead.create({
       data: {
         dealershipId,
         sourceId: source?.id,
@@ -133,12 +138,14 @@ export class LeadsService {
         lastName: payload.lastName,
         email: payload.email,
         phone: payload.phone,
-        leadScore: payload.leadScore,
         vehicleInterest: payload.vehicleInterest,
         lastActivityAt: payload.lastActivityAt ? new Date(payload.lastActivityAt) : null
       },
       include: LEAD_INCLUDE
     });
+
+    await this.leadScoringService.recalculateAndPersist(created.id, dealershipId);
+    const lead = await this.getLeadSummaryOrThrow(dealershipId, created.id);
 
     await this.auditService.logEvent({
       dealershipId,
@@ -219,7 +226,7 @@ export class LeadsService {
   async findById(dealershipId: string, leadId: string) {
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, dealershipId },
-      include: LEAD_INCLUDE
+      include: LEAD_SUMMARY_INCLUDE
     });
 
     if (!lead) {
@@ -237,7 +244,7 @@ export class LeadsService {
       await this.validateAssignee(dealershipId, payload.assignedToUserId);
     }
 
-    const lead = await this.prisma.lead.update({
+    const updated = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         status: payload.status,
@@ -248,12 +255,14 @@ export class LeadsService {
         lastName: payload.lastName,
         email: payload.email,
         phone: payload.phone,
-        leadScore: payload.leadScore,
         vehicleInterest: payload.vehicleInterest,
         lastActivityAt: payload.lastActivityAt ? new Date(payload.lastActivityAt) : undefined
       },
       include: LEAD_INCLUDE
     });
+
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
+    const lead = await this.getLeadSummaryOrThrow(dealershipId, updated.id);
 
     await this.auditService.logEvent({
       dealershipId,
@@ -291,7 +300,7 @@ export class LeadsService {
 
     await this.validateAssignee(dealershipId, payload.assignedToUserId);
 
-    const lead = await this.prisma.lead.update({
+    const updated = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         assignedToUserId: payload.assignedToUserId ?? null,
@@ -299,6 +308,9 @@ export class LeadsService {
       },
       include: LEAD_INCLUDE
     });
+
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
+    const lead = await this.getLeadSummaryOrThrow(dealershipId, updated.id);
 
     await this.auditService.logEvent({
       dealershipId,
@@ -329,7 +341,7 @@ export class LeadsService {
       throw new ForbiddenException('Only admin/manager can mark a lead as sold');
     }
 
-    const lead = await this.prisma.lead.update({
+    const updated = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         status,
@@ -339,6 +351,9 @@ export class LeadsService {
       },
       include: LEAD_INCLUDE
     });
+
+    await this.leadScoringService.recalculateAndPersist(leadId, dealershipId);
+    const lead = await this.getLeadSummaryOrThrow(dealershipId, updated.id);
 
     await this.auditService.logEvent({
       dealershipId,
@@ -417,5 +432,18 @@ export class LeadsService {
     if (!membership) {
       throw new BadRequestException('assignedToUserId must belong to the selected dealership');
     }
+  }
+
+  async getLeadSummaryOrThrow(dealershipId: string, leadId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, dealershipId },
+      include: LEAD_SUMMARY_INCLUDE
+    });
+
+    if (!lead) {
+      throw new NotFoundException('Lead not found');
+    }
+
+    return lead;
   }
 }
