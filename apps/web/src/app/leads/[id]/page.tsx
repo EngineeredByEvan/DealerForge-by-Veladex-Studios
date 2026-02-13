@@ -27,7 +27,14 @@ import {
   fetchTemplates,
   logCall,
   sendMessage,
-  sendSmsMessage
+  sendSmsMessage,
+  assignLead,
+  fetchLeadMeta,
+  fetchLeadTimeline,
+  fetchMe,
+  fetchTeamUsers,
+  updateLead,
+  updateLeadStatus
 } from '@/lib/api';
 
 type LeadDetailPageProps = {
@@ -76,6 +83,13 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('timeline');
   const [newestFirst, setNewestFirst] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(5);
+  const [timelineCursor, setTimelineCursor] = useState<string | null>(null);
+  const [timelineServerItems, setTimelineServerItems] = useState<Array<{ id: string; type: string; occurredAt: string; payload: unknown }>>([]);
+  const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string; role: string }>>([]);
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [leadTypes, setLeadTypes] = useState<string[]>([]);
+  const [myRole, setMyRole] = useState<string>('');
 
   const [composeChannel, setComposeChannel] = useState<'SMS' | 'EMAIL' | 'NOTE'>('SMS');
   const [composeBody, setComposeBody] = useState('');
@@ -99,13 +113,17 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     async function load(): Promise<void> {
       setLoading(true);
       try {
-        const [leadResult, activityResult, messageResult, taskResult, appointmentResult, templateResult] = await Promise.all([
+        const [leadResult, activityResult, messageResult, taskResult, appointmentResult, templateResult, metaResult, teamResult, meResult, timelineResult] = await Promise.all([
           fetchLeadById(params.id),
           fetchLeadActivities(params.id),
           fetchMessagesByLead(params.id),
           fetchTasks({ leadId: params.id }),
           fetchAppointments(),
-          fetchTemplates()
+          fetchTemplates(),
+          fetchLeadMeta(),
+          fetchTeamUsers(),
+          fetchMe(),
+          fetchLeadTimeline(params.id, 5)
         ]);
         await createOrGetThread(params.id);
         setLead(leadResult);
@@ -333,7 +351,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
             {activeTab === 'timeline' ? (
               timeline.length === 0 ? <p className="page-subtitle">No activity yet.</p> : (
                 <div className="timeline-list">
-                  {timeline.map((item) => (
+                  {timeline.slice(0, visibleCount).map((item) => (
                     <details key={item.id} className="timeline-item" open>
                       <summary>
                         <div>
@@ -349,6 +367,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                 </div>
               )
             ) : null}
+            {activeTab === 'timeline' && timeline.length > visibleCount ? <Button variant="ghost" onClick={() => setVisibleCount((v) => v + 5)}>Load more</Button> : null}
 
             {activeTab === 'messages' ? (
               messageThread.length === 0 ? <p className="page-subtitle">No messages yet.</p> : (
@@ -362,6 +381,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                 </div>
               )
             ) : null}
+            {activeTab === 'timeline' && timeline.length > visibleCount ? <Button variant="ghost" onClick={() => setVisibleCount((v) => v + 5)}>Load more</Button> : null}
 
             {activeTab === 'calls' ? (
               callItems.length === 0 ? <p className="page-subtitle">No calls yet.</p> : (
@@ -379,6 +399,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                 </div>
               )
             ) : null}
+            {activeTab === 'timeline' && timeline.length > visibleCount ? <Button variant="ghost" onClick={() => setVisibleCount((v) => v + 5)}>Load more</Button> : null}
 
             {activeTab === 'appointments' ? (
               appointmentItems.length === 0 ? <p className="page-subtitle">No appointments yet.</p> : (
@@ -396,6 +417,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                 </div>
               )
             ) : null}
+            {activeTab === 'timeline' && timeline.length > visibleCount ? <Button variant="ghost" onClick={() => setVisibleCount((v) => v + 5)}>Load more</Button> : null}
           </Card>
 
           <Card>
@@ -456,10 +478,24 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
           <Card>
             <h2 className="section-title">Lead summary</h2>
             <div className="lead-summary-list">
-              <p><strong>Status:</strong> {lead.status}</p>
+              <p><strong>Status:</strong></p>
+              <Select value={lead.status} onChange={async (event) => { const updated = await updateLeadStatus(lead.id, event.target.value as any); setLead(updated); }}>
+                {statuses.map((item) => <option key={item} value={item}>{item}</option>)}
+              </Select>
+              <p><strong>Lead Type:</strong></p>
+              <Select value={lead.leadType ?? 'GENERAL'} onChange={async (event) => { const updated = await updateLead(lead.id, { leadType: event.target.value as any }); setLead(updated); }}>
+                {leadTypes.map((item) => <option key={item} value={item}>{item}</option>)}
+              </Select>
+              <p><strong>Salesperson:</strong></p>
+              <Select value={lead.assignedToUserId ?? ''} onChange={async (event) => { const updated = await assignLead(lead.id, event.target.value || null); setLead(updated); }}>
+                <option value="">Unassigned</option>
+                {teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+              </Select>
+              <p><strong>Lead Score:</strong> {lead.leadScore ?? '—'}</p>
               <p><strong>Source:</strong> {lead.source?.name ?? '—'}</p>
-              <p><strong>Assigned:</strong> {lead.assignedToUserId ?? 'Unassigned'}</p>
               <p><strong>Vehicle:</strong> {lead.vehicleInterest ?? '—'}</p>
+              <p><strong>Sold Date:</strong> {lead.soldAt ? formatDateTime(lead.soldAt) : '—'}</p>
+              {['ADMIN', 'MANAGER', 'OPERATOR'].includes(myRole) ? <Button onClick={async () => { const updated = await updateLeadStatus(lead.id, 'SOLD'); setLead(updated); }}>Mark Sold</Button> : null}
               <p><strong>Phone:</strong> {lead.phone ?? '—'}</p>
               <p><strong>Email:</strong> {lead.email ?? '—'}</p>
               <p><strong>Created:</strong> {formatDateTime(lead.createdAt)}</p>

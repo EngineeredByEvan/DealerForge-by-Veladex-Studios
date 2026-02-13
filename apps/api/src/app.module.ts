@@ -20,6 +20,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
 import { UsersModule } from './modules/users/users.module';
+import { MetaModule } from './modules/meta/meta.module';
 
 @Module({
   imports: [
@@ -38,7 +39,8 @@ import { UsersModule } from './modules/users/users.module';
     DealershipsModule,
     TeamModule,
     CommunicationsModule,
-    UsersModule
+    UsersModule,
+    MetaModule
   ],
   providers: [
     {

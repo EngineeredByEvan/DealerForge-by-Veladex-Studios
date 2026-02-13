@@ -15,10 +15,11 @@ import {
   ReportsSummary,
   ReportsTrendMetric,
   ReportsTrendPoint,
-  fetchLeads,
   fetchReportsBreakdown,
   fetchReportsSummary,
-  fetchReportsTrends
+  fetchReportsTrends,
+  fetchLeadMeta,
+  fetchTeamUsers
 } from '@/lib/api';
 
 function defaultRange(): { start: string; end: string } {
@@ -50,6 +51,8 @@ export default function ReportsPage(): JSX.Element {
   const [trends, setTrends] = useState<ReportsTrendPoint[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [users, setUsers] = useState<string[]>([]);
+  const [statuses, setStatuses] = useState<string[]>([]);
+  const [leadTypes, setLeadTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,13 +66,17 @@ export default function ReportsPage(): JSX.Element {
   };
 
   useEffect(() => {
-    void fetchLeads()
-      .then((leads) => {
-        setSources(Array.from(new Set(leads.map((lead) => lead.source?.name).filter((value): value is string => Boolean(value)))));
-        setUsers(Array.from(new Set(leads.map((lead) => lead.assignedToUserId).filter((value): value is string => Boolean(value)))));
+    void Promise.all([fetchLeadMeta(), fetchTeamUsers()])
+      .then(([meta, teamUsers]) => {
+        setSources(meta.sources.map((sourceItem) => sourceItem.name));
+        setStatuses(meta.statuses);
+        setLeadTypes(meta.leadTypes);
+        setUsers(teamUsers.map((membership) => membership.user.id));
       })
       .catch(() => {
         setSources([]);
+        setStatuses([]);
+        setLeadTypes([]);
         setUsers([]);
       });
   }, []);
@@ -119,8 +126,8 @@ export default function ReportsPage(): JSX.Element {
               <option key={item} value={item}>{item}</option>
             ))}
           </Select>
-          <Input placeholder="Status" value={status} onChange={(event) => setStatus(event.target.value)} />
-          <Input placeholder="Lead type" value={leadType} onChange={(event) => setLeadType(event.target.value)} />
+          <Select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map((item) => <option key={item} value={item}>{item}</option>)}</Select>
+          <Select value={leadType} onChange={(event) => setLeadType(event.target.value)}><option value="">All lead types</option>{leadTypes.map((item) => <option key={item} value={item}>{item}</option>)}</Select>
           <Button onClick={() => void load()}>Refresh</Button>
         </div>
       </SectionCard>

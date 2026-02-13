@@ -11,7 +11,7 @@ export enum CommunicationDirection {
 }
 
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsArray, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -127,4 +127,21 @@ export class SendLeadSmsDto {
   @Transform(({ value }) => normalizeOptionalString(value))
   @IsString()
   toPhone?: string;
+}
+
+
+export class ListTemplatesQueryDto {
+  @IsOptional()
+  @IsEnum(CommunicationChannel)
+  channel?: CommunicationChannel;
+}
+
+export class BulkSendDto {
+  @IsArray()
+  @IsString({ each: true })
+  leadIds!: string[];
+
+  @IsString()
+  @IsNotEmpty()
+  templateId!: string;
 }

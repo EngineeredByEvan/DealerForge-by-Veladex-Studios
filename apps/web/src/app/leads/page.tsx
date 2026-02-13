@@ -14,10 +14,9 @@ import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import { Table } from '@/components/ui/table';
 import { useToast } from '@/components/ui/toast';
-import { CreateLeadPayload, Lead, LeadStatus, createLead, fetchLeads } from '@/lib/api';
+import { CreateLeadPayload, Lead, LeadStatus, assignLead, bulkSendCommunication, createLead, fetchLeadMeta, fetchLeads, fetchTeamUsers, fetchTemplates } from '@/lib/api';
 import { subscribeToDealershipChange } from '@/lib/dealership-store';
 
-const LEAD_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'APPOINTMENT_SET', 'NEGOTIATING', 'SOLD', 'LOST'];
 
 export default function LeadsPage(): JSX.Element {
   const searchParams = useSearchParams();
@@ -36,6 +35,10 @@ export default function LeadsPage(): JSX.Element {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [focusedLeadId, setFocusedLeadId] = useState('');
   const [formState, setFormState] = useState<CreateLeadPayload>({ firstName: '', lastName: '', email: '', phone: '', source: '', vehicleInterest: '' });
+  const [statuses, setStatuses] = useState<LeadStatus[]>([]);
+  const [leadTypes, setLeadTypes] = useState<string[]>([]);
+  const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
 
   const loadLeads = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -59,6 +62,14 @@ export default function LeadsPage(): JSX.Element {
     }
   }, [assignedTo, push, q, range, source, status]);
 
+
+  useEffect(() => {
+    void Promise.all([fetchLeadMeta(), fetchTeamUsers()]).then(([meta, members]) => {
+      setStatuses(meta.statuses);
+      setLeadTypes(meta.leadTypes);
+      setTeamUsers(members.map((m) => ({ id: m.user.id, name: `${m.user.firstName} ${m.user.lastName}`.trim() || m.user.email })));
+    }).catch(() => undefined);
+  }, []);
   useEffect(() => {
     void loadLeads();
   }, [loadLeads]);
@@ -116,7 +127,7 @@ export default function LeadsPage(): JSX.Element {
         <form onSubmit={onFilterSubmit} style={{ display: 'grid', gap: 10 }}>
           <FormSection>
             <Input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Search name/email/vehicle" />
-            <Select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{LEAD_STATUSES.map((leadStatus) => <option key={leadStatus} value={leadStatus}>{leadStatus}</option>)}</Select>
+            <Select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{statuses.map((leadStatus) => <option key={leadStatus} value={leadStatus}>{leadStatus}</option>)}</Select>
             <Input value={assignedTo} onChange={(event) => setAssignedTo(event.target.value)} placeholder="Assigned user id" />
             <Input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Source" />
           </FormSection>
@@ -130,11 +141,11 @@ export default function LeadsPage(): JSX.Element {
           empty={!loading && leads.length === 0}
           emptyState="No leads yet"
           toolbar={<div className="filter-bar"><Button variant="ghost" onClick={() => setSortAsc((v) => !v)}>Sort {sortAsc ? 'A-Z ↑' : 'Z-A ↓'}</Button>{searchParams.get('sla') === 'first-response' ? <Badge>First response SLA focus</Badge> : null}</div>}
-          pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost">Next</Button></>}
+          pagination={<><span>Showing {leads.length} leads</span><Button variant="ghost" onClick={async () => { const templates = await fetchTemplates(); const t = templates.find((item) => item.channel === 'EMAIL'); if (!t || selectedLeadIds.length === 0) return; await bulkSendCommunication({ channel: 'EMAIL', leadIds: selectedLeadIds, templateId: t.id }); push('Bulk email accepted'); }}>Send bulk email</Button></>}
         >
           <Table>
-            <thead><tr><th>Name</th><th>Status</th><th>Source</th><th>Vehicle</th><th>Assigned</th></tr></thead>
-            <tbody>{sortedLeads.map((lead) => <tr key={lead.id} data-lead-id={lead.id} className={focusedLeadId === lead.id ? 'focus-row' : ''}><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td><Badge>{lead.status}</Badge></td><td><Badge>{lead.source?.name ?? '—'}</Badge></td><td>{lead.vehicleInterest ?? '—'}</td><td><span className="assignee-pill">{(lead.assignedToUserId ?? 'UN').slice(0, 2).toUpperCase()}</span>{lead.assignedToUserId ?? 'Unassigned'}</td></tr>)}</tbody>
+            <thead><tr><th></th><th>Name</th><th>Lead Type</th><th>Status</th><th>Salesperson</th><th>Vehicle</th><th>Lead Score</th><th>Source</th><th>Sold Date</th></tr></thead>
+            <tbody>{sortedLeads.map((lead) => <tr key={lead.id} data-lead-id={lead.id} className={focusedLeadId === lead.id ? 'focus-row' : ''}><td><input type="checkbox" checked={selectedLeadIds.includes(lead.id)} onChange={(event) => setSelectedLeadIds((prev) => event.target.checked ? [...prev, lead.id] : prev.filter((id) => id !== lead.id))} /></td><td><Link href={`/leads/${lead.id}`} style={{ color: 'var(--primary)', fontWeight: 600 }}>{`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || lead.id}</Link></td><td>{lead.leadType ?? 'GENERAL'}</td><td><Badge>{lead.status}</Badge></td><td><Select value={lead.assignedToUserId ?? ''} onChange={async (event) => { const updated = await assignLead(lead.id, event.target.value || null); setLeads((prev) => prev.map((item) => item.id === lead.id ? updated : item)); }}><option value="">Unassigned</option>{teamUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</Select></td><td>{lead.vehicleInterest ?? '—'}</td><td>{lead.leadScore ?? '—'}</td><td><Badge>{lead.source?.name ?? '—'}</Badge></td><td>{lead.soldAt ? new Date(lead.soldAt).toLocaleDateString() : '—'}</td></tr>)}</tbody>
           </Table>
         </DataTableShell>
       </SectionCard>

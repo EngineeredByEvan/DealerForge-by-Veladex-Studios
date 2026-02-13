@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { MessageStatus, Prisma } from '@prisma/client';
+import { MessageChannel, MessageStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
@@ -12,7 +12,7 @@ import {
   TELEPHONY_PROVIDER_TOKEN,
   TelephonyProvider
 } from './providers/telephony-provider.interface';
-import { CommunicationChannel, CommunicationDirection, CreateTemplateDto, LogCallDto, SendLeadSmsDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
+import { BulkSendDto, CommunicationChannel, CommunicationDirection, CreateTemplateDto, LogCallDto, SendLeadSmsDto, SendMessageDto, UpdateTemplateDto } from './communications.dto';
 
 const MESSAGE_INCLUDE = {
   actorUser: {
@@ -323,9 +323,9 @@ export class CommunicationsService {
     return message;
   }
 
-  listTemplates(dealershipId: string) {
+  listTemplates(dealershipId: string, channel?: CommunicationChannel) {
     return (this.prisma as any).communicationTemplate.findMany({
-      where: { dealershipId },
+      where: { dealershipId, ...(channel ? { channel } : {}) },
       orderBy: [{ createdAt: 'desc' }]
     });
   }
@@ -356,6 +356,51 @@ export class CommunicationsService {
     });
   }
 
+
+
+  async bulkSend(dealershipId: string, actorUserId: string, channel: Extract<MessageChannel, 'SMS' | 'EMAIL'>, payload: BulkSendDto) {
+    const template = await (this.prisma as any).communicationTemplate.findFirst({
+      where: { id: payload.templateId, dealershipId }
+    });
+
+    if (!template) throw new NotFoundException('Template not found');
+    if (template.channel !== channel) throw new BadRequestException('Template channel mismatch');
+
+    const leads = await this.prisma.lead.findMany({
+      where: { dealershipId, id: { in: payload.leadIds } }
+    });
+
+    let accepted = 0;
+    for (const lead of leads) {
+      const body = this.renderTemplate(template.body, lead);
+      if (channel === 'SMS') {
+        if (!lead.phone) continue;
+        await this.sendLeadSms(dealershipId, lead.id, actorUserId, { body });
+      } else {
+        await this.sendMessage(dealershipId, lead.id, actorUserId, {
+          channel: CommunicationChannel.EMAIL,
+          body,
+          subject: this.renderTemplate(template.subject ?? '', lead),
+          direction: CommunicationDirection.OUTBOUND
+        });
+      }
+      accepted += 1;
+    }
+
+    return { accepted, totalRequested: payload.leadIds.length };
+  }
+
+  private renderTemplate(templateString: string, lead: Prisma.LeadUncheckedCreateInput | any) {
+    const values: Record<string, string> = {
+      firstName: lead.firstName ?? '',
+      lastName: lead.lastName ?? '',
+      vehicle: lead.vehicleInterest ?? '',
+      dealershipName: '',
+      salespersonName: ''
+    };
+
+    return templateString.replace(/{{\s*(\w+)\s*}}/g, (_m, key: string) => values[key] ?? '');
+  }
   async deleteTemplate(dealershipId: string, templateId: string) {
     await this.ensureTemplate(dealershipId, templateId);
     await (this.prisma as any).communicationTemplate.delete({ where: { id: templateId } });

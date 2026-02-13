@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { LeadStatus, Prisma } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { LeadStatus, Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { EventLogService } from '../event-log/event-log.service';
@@ -7,6 +7,14 @@ import { AssignLeadDto, CreateLeadDto, ListLeadsQueryDto, UpdateLeadDto } from '
 
 const LEAD_INCLUDE = {
   assignedToUser: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true
+    }
+  },
+  soldByUser: {
     select: {
       id: true,
       firstName: true,
@@ -22,6 +30,9 @@ const LEAD_INCLUDE = {
   }
 } satisfies Prisma.LeadInclude;
 
+const MANAGEMENT_ASSIGN_ROLES: Role[] = [Role.ADMIN, Role.MANAGER];
+const SOLD_ALLOWED_ROLES: Role[] = [Role.ADMIN, Role.MANAGER];
+
 @Injectable()
 export class LeadsService {
   constructor(
@@ -34,6 +45,7 @@ export class LeadsService {
     const where: Prisma.LeadWhereInput = { dealershipId };
 
     if (query.status) where.status = query.status;
+    if (query.leadType) where.leadType = query.leadType;
     if (query.assignedTo) where.assignedToUserId = query.assignedTo;
 
     if (query.source) {
@@ -62,20 +74,28 @@ export class LeadsService {
     });
   }
 
-  async createLead(dealershipId: string, payload: CreateLeadDto, actorUserId?: string) {
+  async createLead(dealershipId: string, payload: CreateLeadDto, actorUserId?: string, actorRole?: Role) {
     const source = await this.resolveSource(dealershipId, payload.source);
-    await this.validateAssignee(dealershipId, payload.assignedToUserId);
+
+    let assignedToUserId = payload.assignedToUserId;
+    if (!assignedToUserId && actorUserId && actorRole === Role.SALES) {
+      assignedToUserId = actorUserId;
+    }
+
+    await this.validateAssignee(dealershipId, assignedToUserId);
 
     const lead = await this.prisma.lead.create({
       data: {
         dealershipId,
         sourceId: source?.id,
         status: payload.status ?? LeadStatus.NEW,
-        assignedToUserId: payload.assignedToUserId,
+        leadType: payload.leadType,
+        assignedToUserId,
         firstName: payload.firstName,
         lastName: payload.lastName,
         email: payload.email,
         phone: payload.phone,
+        leadScore: payload.leadScore,
         vehicleInterest: payload.vehicleInterest,
         lastActivityAt: payload.lastActivityAt ? new Date(payload.lastActivityAt) : null
       },
@@ -114,6 +134,50 @@ export class LeadsService {
     return lead;
   }
 
+
+  async listTimeline(dealershipId: string, leadId: string, limit = 5, cursor?: string) {
+    await this.ensureLeadExists(dealershipId, leadId);
+
+    const parsedLimit = Math.max(1, Math.min(limit, 25));
+    const cursorDate = cursor ? new Date(cursor) : null;
+    const createdAtFilter = cursorDate && !Number.isNaN(cursorDate.getTime()) ? { lt: cursorDate } : undefined;
+
+    const [messages, activities, tasks, appointments] = await Promise.all([
+      this.prisma.message.findMany({
+        where: { dealershipId, thread: { leadId }, ...(createdAtFilter ? { createdAt: createdAtFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: parsedLimit
+      }),
+      this.prisma.activity.findMany({
+        where: { leadId, ...(createdAtFilter ? { createdAt: createdAtFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: parsedLimit
+      }),
+      this.prisma.task.findMany({
+        where: { dealershipId, leadId, ...(createdAtFilter ? { createdAt: createdAtFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: parsedLimit
+      }),
+      this.prisma.appointment.findMany({
+        where: { dealershipId, lead_id: leadId, ...(createdAtFilter ? { createdAt: createdAtFilter } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: parsedLimit
+      })
+    ]);
+
+    const items = [
+      ...messages.map((item) => ({ id: item.id, type: 'MESSAGE', occurredAt: item.createdAt, payload: item })),
+      ...activities.map((item) => ({ id: item.id, type: 'ACTIVITY', occurredAt: item.createdAt, payload: item })),
+      ...tasks.map((item) => ({ id: item.id, type: 'TASK', occurredAt: item.createdAt, payload: item })),
+      ...appointments.map((item) => ({ id: item.id, type: 'APPOINTMENT', occurredAt: item.createdAt, payload: item }))
+    ].sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
+
+    const page = items.slice(0, parsedLimit);
+    const nextCursor = page.length === parsedLimit ? page[page.length - 1].occurredAt.toISOString() : null;
+
+    return { items: page, nextCursor };
+  }
+
   async findById(dealershipId: string, leadId: string) {
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, dealershipId },
@@ -139,12 +203,14 @@ export class LeadsService {
       where: { id: leadId },
       data: {
         status: payload.status,
+        leadType: payload.leadType,
         sourceId: payload.source !== undefined ? source?.id ?? null : undefined,
         assignedToUserId: payload.assignedToUserId,
         firstName: payload.firstName,
         lastName: payload.lastName,
         email: payload.email,
         phone: payload.phone,
+        leadScore: payload.leadScore,
         vehicleInterest: payload.vehicleInterest,
         lastActivityAt: payload.lastActivityAt ? new Date(payload.lastActivityAt) : undefined
       },
@@ -174,14 +240,23 @@ export class LeadsService {
     return lead;
   }
 
-  async assignLead(dealershipId: string, leadId: string, payload: AssignLeadDto, actorUserId?: string) {
+  async assignLead(dealershipId: string, leadId: string, payload: AssignLeadDto, actorUserId?: string, actorRole?: Role) {
     await this.ensureLeadExists(dealershipId, leadId);
+
+    if (actorRole === Role.SALES) {
+      if (payload.assignedToUserId !== actorUserId) {
+        throw new ForbiddenException('Sales users can only assign leads to themselves');
+      }
+    } else if (!actorRole || !MANAGEMENT_ASSIGN_ROLES.includes(actorRole)) {
+      throw new ForbiddenException('Only admin/manager can assign leads');
+    }
+
     await this.validateAssignee(dealershipId, payload.assignedToUserId);
 
     const lead = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
-        assignedToUserId: payload.assignedToUserId,
+        assignedToUserId: payload.assignedToUserId ?? null,
         lastActivityAt: new Date()
       },
       include: LEAD_INCLUDE
@@ -202,19 +277,26 @@ export class LeadsService {
       eventType: 'lead_assigned',
       entityType: 'Lead',
       entityId: lead.id,
-      payload: { assignedToUserId: payload.assignedToUserId }
+      payload: { assignedToUserId: payload.assignedToUserId ?? null }
     });
 
     return lead;
   }
 
-  async updateStatus(dealershipId: string, leadId: string, status: LeadStatus, actorUserId?: string) {
+  async updateStatus(dealershipId: string, leadId: string, status: LeadStatus, actorUserId?: string, actorRole?: Role) {
     const existingLead = await this.ensureLeadExists(dealershipId, leadId);
+
+    const isSold = status === LeadStatus.SOLD;
+    if (isSold && (!actorRole || !SOLD_ALLOWED_ROLES.includes(actorRole))) {
+      throw new ForbiddenException('Only admin/manager can mark a lead as sold');
+    }
 
     const lead = await this.prisma.lead.update({
       where: { id: leadId },
       data: {
         status,
+        soldAt: isSold ? new Date() : null,
+        soldByUserId: isSold ? actorUserId : null,
         lastActivityAt: new Date()
       },
       include: LEAD_INCLUDE
@@ -252,6 +334,14 @@ export class LeadsService {
   private parseDateRange(dateRange?: string): { start: Date; end: Date } | null {
     if (!dateRange) return null;
 
+    const presets: Record<string, { start: Date; end: Date }> = {
+      TODAY: { start: new Date(new Date().setHours(0, 0, 0, 0)), end: new Date(new Date().setHours(23, 59, 59, 999)) },
+      THIS_WEEK: { start: new Date(new Date(Date.now() - 6 * 24 * 3600_000).setHours(0, 0, 0, 0)), end: new Date(new Date().setHours(23, 59, 59, 999)) },
+      THIS_MONTH: { start: new Date(new Date(Date.now() - 29 * 24 * 3600_000).setHours(0, 0, 0, 0)), end: new Date(new Date().setHours(23, 59, 59, 999)) }
+    };
+
+    if (presets[dateRange]) return presets[dateRange];
+
     const parts = dateRange.split(',').map((part) => part.trim());
     if (parts.length !== 2) {
       throw new BadRequestException('dateRange must use format "start,end" with ISO timestamps');
@@ -282,7 +372,7 @@ export class LeadsService {
     if (!assignedToUserId) return;
 
     const membership = await this.prisma.userDealershipRole.findFirst({
-      where: { dealershipId, userId: assignedToUserId },
+      where: { dealershipId, userId: assignedToUserId, isActive: true },
       select: { id: true }
     });
 

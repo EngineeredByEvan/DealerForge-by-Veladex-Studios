@@ -1,13 +1,16 @@
-import { LeadStatus } from '@prisma/client';
+import { LeadStatus, LeadType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
-  MaxLength
+  Max,
+  MaxLength,
+  Min
 } from 'class-validator';
 
 function normalizeOptionalString(value: unknown): string | undefined {
@@ -23,6 +26,10 @@ export class ListLeadsQueryDto {
   @IsOptional()
   @IsEnum(LeadStatus)
   status?: LeadStatus;
+
+  @IsOptional()
+  @IsEnum(LeadType)
+  leadType?: LeadType;
 
   @IsOptional()
   @IsString()
@@ -47,6 +54,10 @@ export class CreateLeadDto {
   status?: LeadStatus;
 
   @IsOptional()
+  @IsEnum(LeadType)
+  leadType?: LeadType;
+
+  @IsOptional()
   @Transform(({ value }) => normalizeOptionalString(value))
   @IsString()
   source?: string;
@@ -55,6 +66,12 @@ export class CreateLeadDto {
   @Transform(({ value }) => normalizeOptionalString(value))
   @IsString()
   assignedToUserId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  leadScore?: number;
 
   @IsOptional()
   @Transform(({ value }) => normalizeOptionalString(value))
@@ -96,6 +113,10 @@ export class UpdateLeadDto {
   status?: LeadStatus;
 
   @IsOptional()
+  @IsEnum(LeadType)
+  leadType?: LeadType;
+
+  @IsOptional()
   @Transform(({ value }) => normalizeOptionalString(value))
   @IsString()
   source?: string;
@@ -104,6 +125,12 @@ export class UpdateLeadDto {
   @Transform(({ value }) => normalizeOptionalString(value))
   @IsString()
   assignedToUserId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  leadScore?: number;
 
   @IsOptional()
   @Transform(({ value }) => normalizeOptionalString(value))
@@ -140,9 +167,10 @@ export class UpdateLeadDto {
 }
 
 export class AssignLeadDto {
+  @IsOptional()
+  @Transform(({ value }) => normalizeOptionalString(value))
   @IsString()
-  @IsNotEmpty()
-  assignedToUserId!: string;
+  assignedToUserId?: string;
 }
 
 export class UpdateLeadStatusDto {

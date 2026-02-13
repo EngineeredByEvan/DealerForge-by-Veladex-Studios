@@ -37,6 +37,7 @@ const baseNavItems = [
   { href: '/tasks', label: 'Tasks' },
   { href: '/appointments', label: 'Appointments' },
   { href: '/reports', label: 'Reports' },
+  { href: '/templates', label: 'Templates' },
   { href: '/settings/integrations', label: 'Integrations' },
   { href: '/settings/profile', label: 'Profile' }
 ];
