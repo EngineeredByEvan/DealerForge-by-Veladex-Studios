@@ -305,6 +305,50 @@ export type ReportResponseTimeResponse = {
   sampleSize: number;
 };
 
+
+export type ReportsFilters = {
+  start: string;
+  end: string;
+  source?: string;
+  assignedUser?: string;
+  status?: string;
+  leadType?: string;
+};
+
+export type ReportsSummary = {
+  total_leads: number;
+  appointments_set: number;
+  appointments_showed: number;
+  show_rate: number;
+  appointment_rate: number;
+  sold_count: number;
+  close_rate: number;
+};
+
+export type ReportsBreakdownDimension = 'source' | 'assignedUser' | 'status';
+
+export type ReportsBreakdownRow = ReportsSummary & {
+  key: string;
+};
+
+export type ReportsTrendMetric = 'leads' | 'appointments' | 'sold';
+
+export type ReportsTrendPoint = {
+  period: string;
+  value: number;
+};
+
+function toReportsQuery(filters: ReportsFilters): string {
+  const query = new URLSearchParams();
+  query.set('start', filters.start);
+  query.set('end', filters.end);
+  if (filters.source) query.set('source', filters.source);
+  if (filters.assignedUser) query.set('assignedUser', filters.assignedUser);
+  if (filters.status) query.set('status', filters.status);
+  if (filters.leadType) query.set('leadType', filters.leadType);
+  return query.toString();
+}
+
 export type TaskStatus = 'OPEN' | 'DONE' | 'SNOOZED' | 'CANCELED';
 
 export type Task = {
@@ -502,24 +546,40 @@ export async function cancelAppointment(appointmentId: string): Promise<Appointm
 }
 
 
-export async function fetchReportsOverview(): Promise<ReportOverviewResponse> {
-  const response = await apiRequest('/reports/overview');
+export async function fetchReportsSummary(filters: ReportsFilters): Promise<ReportsSummary> {
+  const response = await apiRequest(`/reports/summary?${toReportsQuery(filters)}`);
 
   if (!response.ok) {
-    throw new Error('Unable to fetch reports overview');
+    throw new Error('Unable to fetch reports summary');
   }
 
-  return (await response.json()) as ReportOverviewResponse;
+  return (await response.json()) as ReportsSummary;
 }
 
-export async function fetchReportsResponseTime(): Promise<ReportResponseTimeResponse> {
-  const response = await apiRequest('/reports/response-time');
+export async function fetchReportsBreakdown(
+  dimension: ReportsBreakdownDimension,
+  filters: ReportsFilters
+): Promise<ReportsBreakdownRow[]> {
+  const response = await apiRequest(`/reports/breakdown?dimension=${dimension}&${toReportsQuery(filters)}`);
 
   if (!response.ok) {
-    throw new Error('Unable to fetch reports response time');
+    throw new Error('Unable to fetch reports breakdown');
   }
 
-  return (await response.json()) as ReportResponseTimeResponse;
+  return (await response.json()) as ReportsBreakdownRow[];
+}
+
+export async function fetchReportsTrends(
+  metric: ReportsTrendMetric,
+  filters: ReportsFilters
+): Promise<ReportsTrendPoint[]> {
+  const response = await apiRequest(`/reports/trends?metric=${metric}&interval=day&${toReportsQuery(filters)}`);
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch reports trends');
+  }
+
+  return (await response.json()) as ReportsTrendPoint[];
 }
 
 export type IntegrationProvider = 'GENERIC' | 'AUTOTRADER' | 'CARGURUS' | 'OEM_FORM' | 'REFERRAL';

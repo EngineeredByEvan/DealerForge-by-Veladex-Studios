@@ -32,6 +32,7 @@ const baseNavItems = [
   { href: '/leads', label: 'Leads' },
   { href: '/tasks', label: 'Tasks' },
   { href: '/appointments', label: 'Appointments' },
+  { href: '/reports', label: 'Reports' },
   { href: '/settings/integrations', label: 'Integrations' }
 ];
 
@@ -39,6 +40,7 @@ const commandItems = [
   { group: 'Navigate', label: 'Go to Leads', href: '/leads' },
   { group: 'Navigate', label: 'Go to Tasks', href: '/tasks' },
   { group: 'Navigate', label: 'Go to Appointments', href: '/appointments' },
+  { group: 'Navigate', label: 'Go to Reports', href: '/reports' },
   { group: 'Navigate', label: 'Go to Integrations', href: '/settings/integrations' },
   { group: 'Actions', label: 'Create Lead', href: '/leads' },
   { group: 'Actions', label: 'Create Task', href: '/tasks' },
