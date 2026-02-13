@@ -114,24 +114,29 @@ export function getSelectedDealershipId(): string | null {
 export async function login(email: string, password: string): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password })
   });
 
-  if (!response.ok) {
-    throw new Error('Login failed');
-  }
+  if (!response.ok) throw new Error('Login failed');
 
   const payload: { accessToken: string; refreshToken: string } = await response.json();
   setTokens(payload);
+
+  // ✅ bootstrap tenant selection right away
+  const me = await fetchMe();
+  const defaultId = getSelectedDealershipId() ?? me.dealerships[0]?.dealershipId ?? '';
+  if (defaultId) setSelectedDealershipId(defaultId);
 }
 
+
 export async function fetchMe(): Promise<AuthMeResponse> {
+  const dealershipId = getSelectedDealershipId() ?? 'woodstock-mazda';
+
   const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
     headers: {
-      Authorization: `Bearer ${getAccessToken() ?? ''}`
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+      'x-dealership-id': dealershipId, // <-- add this
     }
   });
 
@@ -141,6 +146,7 @@ export async function fetchMe(): Promise<AuthMeResponse> {
 
   return (await response.json()) as AuthMeResponse;
 }
+
 
 export async function fetchTenantHealth(): Promise<HealthResponse> {
   const response = await fetch(`${API_BASE_URL}/api/v1/health`, {
@@ -164,7 +170,7 @@ async function apiRequest(path: string, init?: RequestInit): Promise<Response> {
     ...init,
     headers: {
       Authorization: `Bearer ${getAccessToken() ?? ''}`,
-      'X-Dealership-Id': dealershipId,
+      'x-dealership-id': dealershipId,
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...(init?.headers ?? {})
     }

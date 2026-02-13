@@ -26,12 +26,14 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @SkipTenant()
   @Post('logout')
   async logout(@Req() req: RequestWithUser): Promise<{ success: true }> {
     await this.authService.logout(req.user!.userId);
     return { success: true };
   }
 
+  @SkipTenant()
   @Get('me')
   me(@Req() req: RequestWithUser) {
     return this.authService.me(req.user!.userId);
