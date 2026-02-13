@@ -46,7 +46,15 @@ async function main(): Promise<void> {
     });
   }
 
-  const primaryDealership = await prisma.dealership.findUniqueOrThrow({ where: { slug: 'plaza-kia' } });
+  const dealerships = await prisma.dealership.findMany({
+    where: { dealerGroupId: dealerGroup.id },
+    select: { id: true, slug: true }
+  });
+  const primaryDealership = dealerships.find((dealership) => dealership.slug === 'plaza-kia');
+
+  if (!primaryDealership) {
+    throw new Error('Expected Plaza Kia dealership to exist after seed upsert');
+  }
 
   const users = [
     { email: 'admin@dealerforge.local', firstName: 'Alice', lastName: 'Admin', role: Role.ADMIN, isPlatformAdmin: true, isPlatformOperator: false },
@@ -76,22 +84,27 @@ async function main(): Promise<void> {
       }
     });
 
-    await prisma.userDealershipRole.upsert({
-      where: {
-        userId_dealershipId: {
+    const dealershipsToAssign = userInput.isPlatformAdmin || userInput.isPlatformOperator ? dealerships : [primaryDealership];
+
+    for (const dealership of dealershipsToAssign) {
+      await prisma.userDealershipRole.upsert({
+        where: {
+          userId_dealershipId: {
+            userId: user.id,
+            dealershipId: dealership.id
+          }
+        },
+        update: {
+          role: userInput.role,
+          isActive: true
+        },
+        create: {
           userId: user.id,
-          dealershipId: primaryDealership.id
+          dealershipId: dealership.id,
+          role: userInput.role
         }
-      },
-      update: {
-        role: userInput.role
-      },
-      create: {
-        userId: user.id,
-        dealershipId: primaryDealership.id,
-        role: userInput.role
-      }
-    });
+      });
+    }
   }
 
   console.log('Seed complete. Test password for all users: Password123!');
