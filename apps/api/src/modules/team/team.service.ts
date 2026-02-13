@@ -11,10 +11,10 @@ export class TeamService {
   constructor(private readonly prisma: PrismaService) {}
 
   async listUsers(actor: AuthUser, tenant: TenantContext) {
-    await this.assertAdmin(actor, tenant);
+    void actor;
 
     return this.prisma.userDealershipRole.findMany({
-      where: { dealershipId: tenant.dealershipId },
+      where: { dealershipId: tenant.dealershipId, isActive: true },
       include: {
         user: {
           select: { id: true, email: true, firstName: true, lastName: true }

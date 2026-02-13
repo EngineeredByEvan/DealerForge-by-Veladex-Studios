@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Get,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
   Query,
@@ -32,7 +34,7 @@ export class LeadsController {
 
   @Post()
   create(@Req() req: TenantRequest, @Body() payload: CreateLeadDto) {
-    return this.leadsService.createLead(req.tenant!.dealershipId, payload, req.user?.userId);
+    return this.leadsService.createLead(req.tenant!.dealershipId, payload, req.user?.userId, req.tenant?.role);
   }
 
   @Get(':id')
@@ -40,18 +42,28 @@ export class LeadsController {
     return this.leadsService.findById(req.tenant!.dealershipId, leadId);
   }
 
+
+  @Get(':id/timeline')
+  timeline(
+    @Req() req: TenantRequest,
+    @Param('id') leadId: string,
+    @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number,
+    @Query('cursor') cursor?: string
+  ) {
+    return this.leadsService.listTimeline(req.tenant!.dealershipId, leadId, limit, cursor);
+  }
   @Patch(':id')
   update(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: UpdateLeadDto) {
     return this.leadsService.updateLead(req.tenant!.dealershipId, leadId, payload, req.user?.userId);
   }
 
-  @Post(':id/assign')
+  @Patch(':id/assign')
   assign(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: AssignLeadDto) {
-    return this.leadsService.assignLead(req.tenant!.dealershipId, leadId, payload, req.user?.userId);
+    return this.leadsService.assignLead(req.tenant!.dealershipId, leadId, payload, req.user?.userId, req.tenant?.role);
   }
 
-  @Post(':id/status')
+  @Patch(':id/status')
   status(@Req() req: TenantRequest, @Param('id') leadId: string, @Body() payload: UpdateLeadStatusDto) {
-    return this.leadsService.updateStatus(req.tenant!.dealershipId, leadId, payload.status, req.user?.userId);
+    return this.leadsService.updateStatus(req.tenant!.dealershipId, leadId, payload.status, req.user?.userId, req.tenant?.role);
   }
 }

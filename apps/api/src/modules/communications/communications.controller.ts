@@ -2,9 +2,11 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@
 import { Request } from 'express';
 import { AuthUser, TenantContext } from '../../common/types/request-context';
 import {
+  BulkSendDto,
   CreateOrGetThreadDto,
   CreateTemplateDto,
   ListMessagesQueryDto,
+  ListTemplatesQueryDto,
   LogCallDto,
   SendLeadSmsDto,
   SendMessageDto,
@@ -67,8 +69,8 @@ export class CommunicationsController {
   }
 
   @Get('templates')
-  listTemplates(@Req() req: TenantRequest) {
-    return this.communicationsService.listTemplates(req.tenant!.dealershipId);
+  listTemplates(@Req() req: TenantRequest, @Query() query: ListTemplatesQueryDto) {
+    return this.communicationsService.listTemplates(req.tenant!.dealershipId, query.channel);
   }
 
   @Post('templates')
@@ -85,6 +87,16 @@ export class CommunicationsController {
     return this.communicationsService.updateTemplate(req.tenant!.dealershipId, templateId, payload);
   }
 
+
+  @Post('bulk/email')
+  bulkEmail(@Req() req: TenantRequest, @Body() payload: BulkSendDto) {
+    return this.communicationsService.bulkSend(req.tenant!.dealershipId, req.user!.userId, 'EMAIL', payload);
+  }
+
+  @Post('bulk/sms')
+  bulkSms(@Req() req: TenantRequest, @Body() payload: BulkSendDto) {
+    return this.communicationsService.bulkSend(req.tenant!.dealershipId, req.user!.userId, 'SMS', payload);
+  }
   @Delete('templates/:templateId')
   deleteTemplate(@Req() req: TenantRequest, @Param('templateId') templateId: string) {
     return this.communicationsService.deleteTemplate(req.tenant!.dealershipId, templateId);

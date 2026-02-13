@@ -26,6 +26,14 @@ export type HealthResponse = {
   timestamp: string;
 };
 
+export type LeadType =
+  | 'NEW_VEHICLE'
+  | 'USED_VEHICLE'
+  | 'SERVICE'
+  | 'FINANCE'
+  | 'GENERAL'
+  | 'TRADE_IN';
+
 export type LeadStatus =
   | 'NEW'
   | 'CONTACTED'
@@ -48,8 +56,26 @@ export type Lead = {
   createdAt: string;
   updatedAt: string;
   assignedToUserId?: string | null;
+  assignedToUser?: { id: string; firstName: string; lastName: string; email: string } | null;
+  soldByUserId?: string | null;
+  soldAt?: string | null;
+  leadType?: LeadType;
+  leadScore?: number | null;
   source?: { id: string; name: string } | null;
 };
+
+
+export type LeadsMeta = {
+  statuses: LeadStatus[];
+  leadTypes: LeadType[];
+  sources: Array<{ id: string; name: string }>;
+};
+
+export async function fetchLeadMeta(): Promise<LeadsMeta> {
+  const response = await apiRequest('/meta/leads');
+  if (!response.ok) throw new Error('Unable to fetch lead meta');
+  return (await response.json()) as LeadsMeta;
+}
 
 
 export type ActivityType = 'CALL' | 'EMAIL' | 'SMS' | 'NOTE' | 'VISIT' | 'TEST_DRIVE' | 'OTHER';
@@ -91,6 +117,8 @@ export type CreateLeadPayload = {
   assignedToUserId?: string;
   vehicleInterest?: string;
   status?: LeadStatus;
+  leadType?: LeadType;
+  leadScore?: number;
 };
 
 export type UpdateLeadPayload = Partial<CreateLeadPayload> & { lastActivityAt?: string };
@@ -241,9 +269,9 @@ export async function updateLead(leadId: string, payload: UpdateLeadPayload): Pr
   return (await response.json()) as Lead;
 }
 
-export async function assignLead(leadId: string, assignedToUserId: string): Promise<Lead> {
+export async function assignLead(leadId: string, assignedToUserId: string | null): Promise<Lead> {
   const response = await apiRequest(`/leads/${leadId}/assign`, {
-    method: 'POST',
+    method: 'PATCH',
     body: JSON.stringify({ assignedToUserId })
   });
 
@@ -256,7 +284,7 @@ export async function assignLead(leadId: string, assignedToUserId: string): Prom
 
 export async function updateLeadStatus(leadId: string, status: LeadStatus): Promise<Lead> {
   const response = await apiRequest(`/leads/${leadId}/status`, {
-    method: 'POST',
+    method: 'PATCH',
     body: JSON.stringify({ status })
   });
 
@@ -296,6 +324,20 @@ export async function createLeadActivity(
 
 
 
+
+
+export type LeadTimelineResponse = {
+  items: Array<{ id: string; type: string; occurredAt: string; payload: unknown }>;
+  nextCursor: string | null;
+};
+
+export async function fetchLeadTimeline(leadId: string, limit = 5, cursor?: string): Promise<LeadTimelineResponse> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set('cursor', cursor);
+  const response = await apiRequest(`/leads/${leadId}/timeline?${query.toString()}`);
+  if (!response.ok) throw new Error('Unable to fetch timeline');
+  return (await response.json()) as LeadTimelineResponse;
+}
 export type MessageChannel = 'SMS' | 'EMAIL' | 'CALL' | 'NOTE';
 export type MessageDirection = 'OUTBOUND' | 'INBOUND';
 
@@ -413,6 +455,14 @@ export async function createTemplate(payload: {
 
   if (!response.ok) throw new Error('Unable to create template');
   return (await response.json()) as CommunicationTemplate;
+}
+
+
+export async function bulkSendCommunication(payload: { channel: 'SMS' | 'EMAIL'; leadIds: string[]; templateId: string }) {
+  const path = payload.channel === 'SMS' ? '/communications/bulk/sms' : '/communications/bulk/email';
+  const response = await apiRequest(path, { method: 'POST', body: JSON.stringify({ leadIds: payload.leadIds, templateId: payload.templateId }) });
+  if (!response.ok) throw new Error('Unable to send bulk communication');
+  return (await response.json()) as { accepted: number; totalRequested: number };
 }
 
 export type ReportOverviewPeriod = {
