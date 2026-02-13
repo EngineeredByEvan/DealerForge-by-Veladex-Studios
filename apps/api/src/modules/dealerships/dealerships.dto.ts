@@ -20,6 +20,12 @@ export class CreateDealershipDto {
   status?: DealershipStatus;
 
   @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  dealerGroupName?: string;
+
+  @IsOptional()
   @IsObject()
   businessHours?: Record<string, unknown>;
 
