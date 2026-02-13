@@ -8,6 +8,12 @@ describe('LeadScoringService', () => {
     },
     message: {
       count: jest.fn()
+    },
+    activity: {
+      count: jest.fn()
+    },
+    appointment: {
+      count: jest.fn()
     }
   } as any;
 
@@ -17,60 +23,98 @@ describe('LeadScoringService', () => {
     jest.clearAllMocks();
   });
 
-  it('computes expected score based on deterministic rules', async () => {
+  it('computes score using contactability, engagement cap, appointment, stage, freshness, and penalties', async () => {
     prismaMock.lead.findFirst.mockResolvedValue({
       id: 'lead-1',
-      status: 'APPOINTMENT_SET',
+      status: 'QUALIFIED',
+      soldAt: null,
       firstName: 'Jane',
       lastName: 'Doe',
-      phone: '+15550001111',
+      phone: '+1 (555) 000-1111',
       email: 'jane@example.com',
       vehicleInterest: 'CX-5',
-      sourceId: 'src-1',
-      soldAt: null,
-      appointments: [{ id: 'apt-1' }]
+      lastActivityAt: new Date(Date.now() - 20 * 60 * 60 * 1000)
     });
+
     prismaMock.message.count
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1);
+      .mockResolvedValueOnce(1) // outbound exists
+      .mockResolvedValueOnce(1) // inbound exists
+      .mockResolvedValueOnce(2) // outbound count
+      .mockResolvedValueOnce(1); // call message count
+
+    prismaMock.activity.count.mockResolvedValueOnce(1); // call activity count
+
+    prismaMock.appointment.count
+      .mockResolvedValueOnce(0) // showed
+      .mockResolvedValueOnce(1) // future set/confirmed
+      .mockResolvedValueOnce(1); // no show
 
     const result = await service.computeScore('lead-1', 'd-1');
 
-    expect(result.score).toBe(83);
-    expect(prismaMock.message.count).toHaveBeenNthCalledWith(1, {
-      where: {
-        dealershipId: 'd-1',
-        thread: { leadId: 'lead-1' },
-        direction: 'OUTBOUND',
-        channel: { in: ['SMS', 'EMAIL'] }
-      }
+    // contactability 30 + engagement min(12+18+10+5,35)=35 + appointment 20 + stage 10 + freshness 5 - penalty 10
+    expect(result.score).toBe(90);
+    expect(result.breakdown).toEqual({
+      contactability: 30,
+      engagement: 35,
+      appointment: 20,
+      stage: 10,
+      freshness: 5,
+      penalty: -10,
+      total: 90
     });
   });
 
-  it('recalculates and persists lead score', async () => {
+  it('applies sold override and returns 100 immediately', async () => {
     prismaMock.lead.findFirst.mockResolvedValue({
       id: 'lead-1',
       status: 'SOLD',
+      soldAt: new Date(),
       firstName: null,
       lastName: null,
       phone: null,
       email: null,
       vehicleInterest: null,
-      sourceId: null,
-      soldAt: new Date(),
-      appointments: []
+      lastActivityAt: null
+    });
+
+    const result = await service.computeScore('lead-1', 'd-1');
+
+    expect(result.score).toBe(100);
+    expect(prismaMock.message.count).not.toHaveBeenCalled();
+    expect(prismaMock.appointment.count).not.toHaveBeenCalled();
+    expect(prismaMock.activity.count).not.toHaveBeenCalled();
+  });
+
+  it('recalculates and persists lead score', async () => {
+    prismaMock.lead.findFirst.mockResolvedValue({
+      id: 'lead-1',
+      status: 'NEW',
+      soldAt: null,
+      firstName: null,
+      lastName: null,
+      phone: null,
+      email: null,
+      vehicleInterest: null,
+      lastActivityAt: null
     });
     prismaMock.message.count
       .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
-    prismaMock.lead.update.mockResolvedValue({ id: 'lead-1', leadScore: 20 });
+    prismaMock.activity.count.mockResolvedValueOnce(0);
+    prismaMock.appointment.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+    prismaMock.lead.update.mockResolvedValue({ id: 'lead-1', leadScore: 0 });
 
     await service.recalculateAndPersist('lead-1', 'd-1');
 
     expect(prismaMock.lead.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'lead-1' },
-        data: expect.objectContaining({ leadScore: 20 })
+        data: expect.objectContaining({ leadScore: 0 })
       })
     );
   });
