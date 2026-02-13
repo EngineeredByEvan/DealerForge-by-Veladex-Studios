@@ -1,5 +1,5 @@
 import { DealershipStatus } from '@prisma/client';
-import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateDealershipDto {
   @IsString()
@@ -18,6 +18,10 @@ export class CreateDealershipDto {
   @IsOptional()
   @IsEnum(DealershipStatus)
   status?: DealershipStatus;
+
+  @IsOptional()
+  @IsObject()
+  businessHours?: Record<string, unknown>;
 }
 
 export class UpdateDealershipDto {
@@ -40,4 +44,29 @@ export class UpdateDealershipDto {
   @IsOptional()
   @IsEnum(DealershipStatus)
   status?: DealershipStatus;
+
+  @IsOptional()
+  @IsObject()
+  businessHours?: Record<string, unknown>;
+}
+
+export class UpdateDealershipSettingsDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  timezone?: string;
+
+  @IsOptional()
+  @IsEnum(DealershipStatus)
+  status?: DealershipStatus;
+
+  @IsOptional()
+  @IsObject()
+  businessHours?: Record<string, unknown>;
 }

@@ -89,6 +89,7 @@ export class AuthService {
     email: string;
     firstName: string;
     lastName: string;
+    phone: string | null;
     isPlatformAdmin: boolean;
     isPlatformOperator: boolean;
     platformRole: 'NONE' | 'OPERATOR' | 'ADMIN';
@@ -121,6 +122,7 @@ export class AuthService {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      phone: user.phone,
       isPlatformAdmin: user.isPlatformAdmin,
       isPlatformOperator: user.isPlatformOperator,
       platformRole,

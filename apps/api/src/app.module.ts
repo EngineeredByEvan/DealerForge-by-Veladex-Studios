@@ -19,6 +19,7 @@ import { TeamModule } from './modules/team/team.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { TasksModule } from './modules/tasks/tasks.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -36,7 +37,8 @@ import { CommunicationsModule } from './modules/communications/communications.mo
     AuditModule,
     DealershipsModule,
     TeamModule,
-    CommunicationsModule
+    CommunicationsModule,
+    UsersModule
   ],
   providers: [
     {

@@ -104,6 +104,7 @@ model Dealership {
   slug        String               @unique
   timezone    String               @default("UTC")
   status      DealershipStatus     @default(ACTIVE)
+  businessHours Json?
   autoGroup   AutoGroup            @relation(fields: [autoGroupId], references: [id])
   leads       Lead[]
   tasks       Task[]
@@ -147,6 +148,7 @@ model User {
   isPlatformOperator Boolean             @default(false)
   firstName        String
   lastName         String
+  phone            String?
   dealerships      UserDealershipRole[]
   createdInvitations Invitation[]       @relation("InvitationCreatedBy")
   assignedLeads    Lead[]               @relation("LeadAssignments")

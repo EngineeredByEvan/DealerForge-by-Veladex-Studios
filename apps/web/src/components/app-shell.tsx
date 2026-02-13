@@ -36,7 +36,8 @@ const baseNavItems = [
   { href: '/tasks', label: 'Tasks' },
   { href: '/appointments', label: 'Appointments' },
   { href: '/reports', label: 'Reports' },
-  { href: '/settings/integrations', label: 'Integrations' }
+  { href: '/settings/integrations', label: 'Integrations' },
+  { href: '/settings/profile', label: 'Profile' }
 ];
 
 const commandItems = [
@@ -132,7 +133,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const navItems = [
     ...baseNavItems,
     ...(platformRole === 'ADMIN' ? [{ href: '/settings/dealerships', label: 'Dealership Settings' }] : []),
-    ...(canManageTeam ? [{ href: '/settings/team', label: 'Team' }] : [])
+    ...(canManageTeam ? [{ href: '/settings/team', label: 'Team' }] : []),
+    ...(canManageTeam || platformRole === 'OPERATOR' ? [{ href: '/settings/dealership', label: 'Dealership Settings' }] : [])
   ].filter((item) => canAccess(item.href, authUser, selectedDealership || null));
 
   const isRouteAllowed = canAccess(pathname, authUser, selectedDealership || null);

@@ -2,14 +2,13 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { Role } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 
 type Membership = {
   userId: string;
   dealershipId: string;
-  role: Role;
+  role: 'ADMIN' | 'MANAGER' | 'BDC' | 'SALES';
   isActive?: boolean;
 };
 
@@ -26,7 +25,8 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
         firstName: 'Admin',
         lastName: 'User',
         isPlatformAdmin: false,
-        isPlatformOperator: false
+        isPlatformOperator: false,
+        phone: null
       },
       {
         id: 'u-sales',
@@ -36,13 +36,17 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
         firstName: 'Sales',
         lastName: 'User',
         isPlatformAdmin: false,
-        isPlatformOperator: false
+        isPlatformOperator: false,
+        phone: null
       }
     ],
     memberships: [
-      { userId: 'u-admin', dealershipId: 'd-1', role: Role.ADMIN, isActive: true },
-      { userId: 'u-sales', dealershipId: 'd-1', role: Role.SALES, isActive: true }
-    ] as Membership[]
+      { userId: 'u-admin', dealershipId: 'd-1', role: 'ADMIN', isActive: true },
+      { userId: 'u-sales', dealershipId: 'd-1', role: 'SALES', isActive: true }
+    ] as Membership[],
+    dealerships: [
+      { id: 'd-1', name: 'Woodstock Mazda', slug: 'woodstock-mazda', timezone: 'UTC', status: 'ACTIVE', businessHours: null }
+    ]
   };
 
   const prismaMock = {
@@ -79,7 +83,10 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
           return null;
         }
 
-        user.refreshTokenHash = data.refreshTokenHash ?? null;
+        user.refreshTokenHash = data.refreshTokenHash ?? user.refreshTokenHash ?? null;
+        user.firstName = data.firstName ?? user.firstName;
+        user.lastName = data.lastName ?? user.lastName;
+        user.phone = data.phone === undefined ? user.phone : data.phone;
         return user;
       })
     },
@@ -91,6 +98,25 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
               membership.userId === where.userId && membership.dealershipId === where.dealershipId
           ) ?? null
         );
+      })
+    },
+    dealership: {
+      findUniqueOrThrow: jest.fn(async ({ where }: any) => {
+        const dealership = state.dealerships.find((candidate) => candidate.id === where.id);
+        if (!dealership) {
+          throw new Error('Not found');
+        }
+
+        return dealership;
+      }),
+      update: jest.fn(async ({ where, data }: any) => {
+        const dealership = state.dealerships.find((candidate) => candidate.id === where.id);
+        if (!dealership) {
+          throw new Error('Not found');
+        }
+
+        Object.assign(dealership, data);
+        return dealership;
       })
     },
     lead: {
@@ -176,4 +202,61 @@ describe('Auth + tenancy + RBAC (e2e)', () => {
       .set('X-Dealership-Id', 'd-1')
       .expect(403);
   });
+
+  it('updates current user profile without tenant header', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'sales@test.com', password: 'Password123!' })
+      .expect(201);
+
+    const updateRes = await request(app.getHttpServer())
+      .patch('/api/v1/users/me')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .send({ firstName: 'Updated', phone: '5551112222' })
+      .expect(200);
+
+    expect(updateRes.body.firstName).toBe('Updated');
+    expect(updateRes.body.phone).toBe('5551112222');
+  });
+
+  it('allows dealership admin to update their own dealership settings with tenant header', async () => {
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'admin@test.com', password: 'Password123!' })
+      .expect(201);
+
+    const updateRes = await request(app.getHttpServer())
+      .patch('/api/v1/dealerships/d-1')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({ name: 'Updated Store', status: 'INACTIVE' })
+      .expect(200);
+
+    expect(updateRes.body.name).toBe('Updated Store');
+    expect(updateRes.body.status).toBe('INACTIVE');
+  });
+
+  it('blocks dealership admin from updating another dealership', async () => {
+    state.dealerships.push({
+      id: 'd-2',
+      name: 'Other Dealer',
+      slug: 'other-dealer',
+      timezone: 'UTC',
+      status: 'ACTIVE',
+      businessHours: null
+    });
+
+    const loginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'admin@test.com', password: 'Password123!' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch('/api/v1/dealerships/d-2')
+      .set('Authorization', `Bearer ${loginRes.body.accessToken}`)
+      .set('X-Dealership-Id', 'd-1')
+      .send({ name: 'Not Allowed' })
+      .expect(403);
+  });
+
 });

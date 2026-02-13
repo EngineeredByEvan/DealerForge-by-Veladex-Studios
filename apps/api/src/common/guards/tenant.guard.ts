@@ -7,6 +7,7 @@ import {
   UnauthorizedException
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { Role } from '@prisma/client';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { SKIP_TENANT_KEY } from '../decorators/skip-tenant.decorator';
@@ -51,6 +52,15 @@ export class TenantGuard implements CanActivate {
     });
 
     if (!membership) {
+      if (user.platformRole === 'ADMIN' || user.platformRole === 'OPERATOR') {
+        request.tenant = {
+          dealershipId,
+          role: Role.ADMIN
+        };
+
+        return true;
+      }
+
       throw new ForbiddenException('User does not have access to this dealership');
     }
 
