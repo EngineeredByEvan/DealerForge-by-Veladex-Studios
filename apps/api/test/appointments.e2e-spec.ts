@@ -216,6 +216,13 @@ describe('Appointments endpoints (e2e)', () => {
         Object.assign(appointment, data, { updatedAt: new Date() });
         return buildAppointmentResponse(appointment);
       })
+    },
+    auditLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `audit-${Date.now()}`, createdAt: new Date(), ...data }))
+    },
+    eventLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `event-${Date.now()}`, ...data })),
+      findMany: jest.fn(async ({ where }: any) => [])
     }
   };
 
@@ -296,6 +303,15 @@ describe('Appointments endpoints (e2e)', () => {
 
     expect(createRes.body.status).toBe('SET');
     expect(createRes.body.lead_id).toBe('lead-d1');
+    expect(prismaMock.eventLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          dealershipId: 'd-1',
+          eventType: 'appointment_created',
+          entityType: 'Appointment'
+        })
+      })
+    );
 
     await request(app.getHttpServer())
       .post('/api/v1/appointments')

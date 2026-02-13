@@ -158,6 +158,13 @@ describe('Reports endpoints (e2e)', () => {
 
         return { createdAt: activities[0].createdAt };
       })
+    },
+    auditLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `audit-${Date.now()}`, createdAt: new Date(), ...data }))
+    },
+    eventLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `event-${Date.now()}`, ...data })),
+      findMany: jest.fn(async ({ where }: any) => [])
     }
   };
 
@@ -237,6 +244,40 @@ describe('Reports endpoints (e2e)', () => {
 
     expect(response.body.sampleSize).toBe(2);
     expect(response.body.averageMinutes).toBeGreaterThan(0);
+  });
+
+  it('allows admin to query event logs with filters', async () => {
+    const token = await loginAsAdmin();
+
+    (prismaMock.eventLog.findMany as jest.Mock).mockResolvedValueOnce([
+      {
+        id: 'evt-1',
+        dealershipId: 'd-1',
+        eventType: 'lead_created',
+        entityType: 'Lead',
+        entityId: 'lead-1',
+        payload: { status: 'NEW' },
+        occurredAt: new Date('2026-03-01T10:00:00.000Z')
+      }
+    ]);
+
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/reports/events')
+      .query({ eventType: 'lead_created', entityType: 'Lead' })
+      .set('Authorization', `Bearer ${token}`)
+      .set('X-Dealership-Id', 'd-1')
+      .expect(200);
+
+    expect(response.body).toHaveLength(1);
+    expect(prismaMock.eventLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          dealershipId: 'd-1',
+          eventType: 'lead_created',
+          entityType: 'Lead'
+        })
+      })
+    );
   });
 
   it('denies reports access when user is not a member of dealership', async () => {

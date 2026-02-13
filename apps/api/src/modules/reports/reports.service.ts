@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AppointmentStatus, LeadStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { QueryEventLogsDto } from './reports.dto';
 
 type RangeWindow = {
   start: Date;
@@ -132,6 +133,32 @@ export class ReportsService {
     };
   }
 
+
+  async listEventLogs(dealershipId: string, query: QueryEventLogsDto) {
+    const startAt = query.startAt ? new Date(query.startAt) : undefined;
+    const endAt = query.endAt ? new Date(query.endAt) : undefined;
+
+    if (startAt && endAt && startAt > endAt) {
+      throw new BadRequestException('startAt must be before endAt');
+    }
+
+    return this.prisma.eventLog.findMany({
+      where: {
+        dealershipId,
+        eventType: query.eventType || undefined,
+        entityType: query.entityType || undefined,
+        occurredAt:
+          startAt || endAt
+            ? {
+                gte: startAt,
+                lte: endAt
+              }
+            : undefined
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: 200
+    });
+  }
   private getTodayWindow(now: Date): RangeWindow {
     const start = new Date(now);
     start.setHours(0, 0, 0, 0);

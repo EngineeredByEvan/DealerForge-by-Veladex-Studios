@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { LeadStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { EventLogService } from '../event-log/event-log.service';
 import { AssignLeadDto, CreateLeadDto, ListLeadsQueryDto, UpdateLeadDto } from './leads.dto';
 
 const LEAD_INCLUDE = {
@@ -25,7 +26,8 @@ const LEAD_INCLUDE = {
 export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly eventLogService: EventLogService
   ) {}
 
   async listByDealership(dealershipId: string, query: ListLeadsQueryDto) {
@@ -88,6 +90,26 @@ export class LeadsService {
       entityId: lead.id,
       metadata: { status: lead.status, source: payload.source ?? null }
     });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'lead_created',
+      entityType: 'Lead',
+      entityId: lead.id,
+      payload: { status: lead.status, assignedToUserId: lead.assignedToUserId, source: payload.source ?? null }
+    });
+
+    if (lead.assignedToUserId) {
+      await this.eventLogService.emit({
+        dealershipId,
+        actorUserId,
+        eventType: 'lead_assigned',
+        entityType: 'Lead',
+        entityId: lead.id,
+        payload: { assignedToUserId: lead.assignedToUserId }
+      });
+    }
 
     return lead;
   }
@@ -161,6 +183,15 @@ export class LeadsService {
       entityType: 'Lead',
       entityId: lead.id,
       metadata: { assignedToUserId: payload.assignedToUserId }
+    });
+
+    await this.eventLogService.emit({
+      dealershipId,
+      actorUserId,
+      eventType: 'lead_assigned',
+      entityType: 'Lead',
+      entityId: lead.id,
+      payload: { assignedToUserId: payload.assignedToUserId }
     });
 
     return lead;

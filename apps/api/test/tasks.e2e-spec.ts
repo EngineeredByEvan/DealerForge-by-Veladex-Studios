@@ -242,6 +242,13 @@ describe('Tasks endpoints (e2e)', () => {
         Object.assign(task, data, { updatedAt: new Date() });
         return buildTaskResponse(task);
       })
+    },
+    auditLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `audit-${Date.now()}`, createdAt: new Date(), ...data }))
+    },
+    eventLog: {
+      create: jest.fn(async ({ data }: any) => ({ id: `event-${Date.now()}`, ...data })),
+      findMany: jest.fn(async ({ where }: any) => [])
     }
   };
 

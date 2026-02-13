@@ -5,6 +5,7 @@ import { randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { LeadsService } from '../leads/leads.service';
+import { EventLogService } from '../event-log/event-log.service';
 import { GenericAdapter } from './adapters/generic.adapter';
 import { IntegrationAdapter, LeadInboundDto } from './adapters/integration-adapter.interface';
 import { CreateIntegrationDto } from './integrations.dto';
@@ -27,7 +28,8 @@ export class IntegrationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly leadsService: LeadsService,
-    private readonly auditService: AuditService
+    private readonly auditService: AuditService,
+    private readonly eventLogService: EventLogService
   ) {}
 
   async createIntegration(dealershipId: string, payload: CreateIntegrationDto) {
@@ -116,6 +118,19 @@ export class IntegrationsService {
         failureCount += 1;
       }
     }
+
+    await this.eventLogService.emit({
+      dealershipId,
+      eventType: 'integration_csv_import_completed',
+      entityType: 'Integration',
+      entityId: integration?.id ?? 'csv_import',
+      payload: {
+        integrationId: integration?.id ?? null,
+        totalRows: rows.length,
+        successCount,
+        failureCount
+      }
+    });
 
     return {
       totalRows: rows.length,
