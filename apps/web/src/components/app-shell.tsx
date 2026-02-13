@@ -148,7 +148,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
         <header className="topbar">
           <div className="topbar-row">
             <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open global command palette">
-              <Input placeholder="Search leads, tasks, appointments..." readOnly style={{ maxWidth: 420, cursor: 'pointer' }} />
+              <Input placeholder="Search leads, customers, tasks, and appointments" readOnly style={{ width: "min(620px, 56vw)", minWidth: 320, paddingRight: 64, cursor: 'pointer' }} />
               <span className="command-shortcut">⌘K</span>
             </button>
             <Select
