@@ -17,8 +17,10 @@ import {
   IntegrationProvider,
   createIntegration,
   fetchIntegrations,
+  getSelectedDealershipId,
   importIntegrationsCsv
 } from '@/lib/api';
+import { pushCsvImportNotification } from '@/lib/notifications';
 
 const PROVIDERS: IntegrationProvider[] = ['GENERIC', 'AUTOTRADER', 'CARGURUS', 'OEM_FORM', 'REFERRAL'];
 
@@ -80,6 +82,13 @@ export default function SettingsIntegrationsPage(): JSX.Element {
       setImportSummary(
         `Imported ${result.successCount}/${result.totalRows} rows (${result.failureCount} failed).`
       );
+      const dealershipId = getSelectedDealershipId();
+      if (dealershipId) {
+        pushCsvImportNotification(
+          dealershipId,
+          `Imported ${result.successCount}/${result.totalRows} rows.`
+        );
+      }
       setCsv('');
       await loadIntegrations();
     } catch {
