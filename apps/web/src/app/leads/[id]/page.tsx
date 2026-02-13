@@ -30,6 +30,7 @@ import {
   logCall,
   sendMessage,
   sendSmsMessage,
+  renderTemplatePreview,
   assignLead,
   fetchLeadTimeline,
   fetchLeadsOptions,
@@ -99,6 +100,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
   const [composeBody, setComposeBody] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeSubmitting, setComposeSubmitting] = useState(false);
+  const [templateHint, setTemplateHint] = useState<string>('');
 
   const [callDirection, setCallDirection] = useState<'INBOUND' | 'OUTBOUND'>('OUTBOUND');
   const [callDurationSec, setCallDurationSec] = useState<number | ''>('');
@@ -161,6 +163,28 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
     });
     return unsubscribe;
   }, []);
+
+
+  async function refreshMessages(): Promise<void> {
+    setMessages(await fetchMessagesByLead(params.id));
+  }
+
+  async function applyTemplate(templateId: string): Promise<void> {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template || template.channel !== composeChannel) return;
+
+    const preview = await renderTemplatePreview({
+      templateBody: template.body,
+      templateSubject: template.subject ?? undefined,
+      leadId: params.id
+    });
+
+    setComposeBody(preview.renderedBody);
+    setComposeSubject(preview.renderedSubject ?? '');
+    setTemplateHint(preview.missingFields.length > 0
+      ? `Filled using lead data • missing: ${preview.missingFields.join(', ')}`
+      : 'Filled using lead data');
+  }
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const messageItems: TimelineItem[] = messages.map((message) => ({
@@ -232,11 +256,8 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
       setError(null);
 
       if (composeChannel === 'SMS') {
-        const optimisticId = `optimistic-${Date.now()}`;
-        setMessages((previous) => [{ id: optimisticId, dealershipId: lead?.dealershipId ?? '', threadId: '', channel: 'SMS', direction: 'OUTBOUND', body: composeBody, status: 'QUEUED', sentAt: null, actorUserId: null, providerMessageId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...previous]);
         const created = await sendSmsMessage(params.id, { body: composeBody });
-        setMessages((previous) => [created.message, ...previous.filter((msg) => msg.id !== optimisticId)]);
-        setMessages(await fetchMessagesByLead(params.id));
+        await refreshMessages();
         setLead(created.lead);
         setAiRefreshKey((previous) => previous + 1);
       } else {
@@ -245,14 +266,14 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
           body: composeBody,
           subject: composeSubject || undefined
         });
-        setMessages((previous) => [created.message, ...previous]);
-        setMessages(await fetchMessagesByLead(params.id));
+        await refreshMessages();
         setLead(created.lead);
         setAiRefreshKey((previous) => previous + 1);
       }
 
       setComposeBody('');
       setComposeSubject('');
+      setTemplateHint('');
       push(`${composeChannel} sent`);
     } catch {
       setError(`Unable to send ${composeChannel.toLowerCase()}`);
@@ -274,8 +295,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
         outcome: callOutcome,
         body: callNotes
       });
-      setMessages((previous) => [created.message, ...previous]);
-      setMessages(await fetchMessagesByLead(params.id));
+      await refreshMessages();
       setLead(created.lead);
       setAiRefreshKey((previous) => previous + 1);
       setCallNotes('');
@@ -457,17 +477,14 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
             <div className="lead-actions-grid">
               <form onSubmit={handleComposeSubmit} className="lead-form-stack">
                 <strong>Compose message</strong>
-                <Select value={composeChannel} onChange={(event) => setComposeChannel(event.target.value as 'SMS' | 'EMAIL' | 'NOTE')}>
+                <Select value={composeChannel} onChange={(event) => { setComposeChannel(event.target.value as 'SMS' | 'EMAIL' | 'NOTE'); setTemplateHint(''); }}>
                   <option value="SMS">SMS</option>
                   <option value="EMAIL">Email</option>
                   <option value="NOTE">Note</option>
                 </Select>
                 <Select
                   onChange={(event) => {
-                    const template = templates.find((item) => item.id === event.target.value);
-                    if (!template || template.channel !== composeChannel) return;
-                    setComposeBody(template.body);
-                    setComposeSubject(template.subject ?? '');
+                    void applyTemplate(event.target.value);
                   }}
                   defaultValue=""
                 >
@@ -477,6 +494,7 @@ export default function LeadDetailPage({ params }: LeadDetailPageProps): JSX.Ele
                   ))}
                 </Select>
                 {composeChannel === 'EMAIL' ? <Input value={composeSubject} onChange={(event) => setComposeSubject(event.target.value)} placeholder="Subject" /> : null}
+                {templateHint ? <small className="page-subtitle">{templateHint}</small> : null}
                 <Textarea value={composeBody} onChange={(event) => setComposeBody(event.target.value)} rows={4} placeholder={`Write ${composeChannel.toLowerCase()}...`} />
                 <Button type="submit" disabled={composeSubmitting || (composeChannel === 'SMS' && !lead.phone)}>{composeSubmitting ? 'Sending...' : composeChannel === 'SMS' && !lead.phone ? 'Lead missing phone number' : `Send ${composeChannel}`}</Button>
               </form>
