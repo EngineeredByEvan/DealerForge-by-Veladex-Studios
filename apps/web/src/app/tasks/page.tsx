@@ -1,6 +1,16 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { DataTableShell } from '@/components/layout/data-table';
+import { FormField } from '@/components/layout/form-field';
+import { PageHeader } from '@/components/layout/page-header';
+import { SectionCard } from '@/components/layout/section-card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Table } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import {
   CreateTaskPayload,
   Task,
@@ -22,7 +32,7 @@ export default function TasksPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
       const result = await fetchTasks(statusFilter === 'ALL' ? undefined : { status: statusFilter });
@@ -33,11 +43,11 @@ export default function TasksPage(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }
+  }, [statusFilter]);
 
   useEffect(() => {
     void load();
-  }, [statusFilter]);
+  }, [load]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -86,74 +96,88 @@ export default function TasksPage(): JSX.Element {
   }
 
   return (
-    <main>
-      <h1>Tasks</h1>
-      {error ? <p>{error}</p> : null}
+    <div className="grid" style={{ gap: 18 }}>
+      <PageHeader title="Tasks" subtitle="Track follow-ups with cleaner workflows and status-based controls." />
+      {error ? <p className="error">{error}</p> : null}
 
-      <section>
-        <h2>Create Task</h2>
-        <form onSubmit={(event) => void handleCreate(event)}>
-          <label htmlFor="title">Title</label>
-          <input id="title" value={title} onChange={(event) => setTitle(event.target.value)} required />
-
-          <label htmlFor="description">Description</label>
-          <textarea
-            id="description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-
-          <label htmlFor="dueAt">Due date/time</label>
-          <input
-            id="dueAt"
-            type="datetime-local"
-            value={dueAt}
-            onChange={(event) => setDueAt(event.target.value)}
-          />
-
-          <button type="submit">Create Task</button>
+      <SectionCard title="Create Task">
+        <form onSubmit={(event) => void handleCreate(event)} className="form-grid">
+          <FormField label="Title" htmlFor="title" description="A concise action-focused task name" error={!title.trim() && error ? 'Title required' : null}>
+            <Input id="title" value={title} onChange={(event) => setTitle(event.target.value)} required />
+          </FormField>
+          <FormField label="Due date/time" htmlFor="dueAt" hint="Optional">
+            <Input id="dueAt" type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
+          </FormField>
+          <FormField label="Description" htmlFor="description" description="Add context for the assigned rep">
+            <Textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} rows={4} />
+          </FormField>
+          <div style={{ alignSelf: 'end' }}>
+            <Button type="submit">Create Task</Button>
+          </div>
         </form>
-      </section>
+      </SectionCard>
 
-      <section>
-        <h2>Task List</h2>
-        <label htmlFor="statusFilter">Filter by status</label>
-        <select
-          id="statusFilter"
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value as TaskStatus | 'ALL')}
+      <SectionCard title="Task List">
+        <DataTableShell
+          loading={loading}
+          empty={!loading && tasks.length === 0}
+          toolbar={
+            <div className="filter-bar">
+              <FormField label="Status" htmlFor="statusFilter">
+                <Select
+                  id="statusFilter"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value as TaskStatus | 'ALL')}
+                >
+                  <option value="ALL">All statuses</option>
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            </div>
+          }
+          emptyState={<div><p>No tasks found.</p><Button variant="secondary">Create your first task</Button></div>}
+          pagination={<><span>Showing {tasks.length} tasks</span><Button variant="ghost">Next</Button></>}
         >
-          <option value="ALL">ALL</option>
-          {STATUS_OPTIONS.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
-
-        {loading ? <p>Loading tasks...</p> : null}
-        {!loading && tasks.length === 0 ? <p>No tasks found. Create your first follow-up task above.</p> : null}
-        <ul>
-          {tasks.map((task) => (
-            <li key={task.id}>
-              <strong>{task.title}</strong> ({task.status})
-              <p>{task.description ?? 'No description'}</p>
-              <p>Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : '—'}</p>
-              <p>Lead: {task.leadId ?? '—'}</p>
-              <button type="button" disabled={task.status === 'DONE'} onClick={() => void handleComplete(task.id)}>
-                Complete
-              </button>
-              <button
-                type="button"
-                disabled={task.status === 'DONE' || task.status === 'CANCELED'}
-                onClick={() => void handleSnooze(task.id)}
-              >
-                Snooze +1d
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+          <Table>
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Status</th>
+                <th>Due</th>
+                <th>Lead</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map((task) => (
+                <tr key={task.id}>
+                  <td>{task.title}</td>
+                  <td><Badge>{task.status}</Badge></td>
+                  <td>{task.dueAt ? new Date(task.dueAt).toLocaleString() : '—'}</td>
+                  <td>{task.leadId ?? '—'}</td>
+                  <td style={{ display: 'flex', gap: 8 }}>
+                    <Button type="button" variant="secondary" disabled={task.status === 'DONE'} onClick={() => void handleComplete(task.id)}>
+                      Complete
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={task.status === 'DONE' || task.status === 'CANCELED'}
+                      onClick={() => void handleSnooze(task.id)}
+                    >
+                      Snooze +1d
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </DataTableShell>
+      </SectionCard>
+    </div>
   );
 }
