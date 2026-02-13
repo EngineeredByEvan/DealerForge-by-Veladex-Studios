@@ -258,3 +258,36 @@ For API test infrastructure, the workflow starts PostgreSQL and Redis service co
   - `POST /api/v1/webhooks/twilio/sms/inbound`
   - `POST /api/v1/webhooks/twilio/sms/status`
 - For local webhook testing, expose your API via ngrok and configure Twilio webhook URLs to your ngrok public URL.
+
+## CSV Import Format + Supported Headers + Troubleshooting
+
+`POST /api/v1/integrations/import/csv` accepts JSON body:
+
+```json
+{ "csv": "firstName,lastName,email,phone,vehicleInterest\nAlex,Rivera,alex@example.com,5550001,2024 CX-5" }
+```
+
+### Supported headers (aliases)
+
+- `firstName`, `firstname`, `first_name`
+- `lastName`, `lastname`, `last_name`
+- `email`, `emailAddress`, `email_address`
+- `phone`, `phoneNumber`, `phone_number`, `mobile`
+- `vehicleInterest`, `vehicle`, `vehicle_interest`
+- `source`, `leadSource`, `lead_source`
+- `leadType`, `lead_type` (optional, defaults to `GENERAL`)
+- `status` (optional, defaults to `NEW`)
+
+### Validation rules
+
+- Row must include at least one contact method: `email` or `phone`.
+- Empty strings are normalized to `undefined`.
+- `email` is lowercased.
+- `phone` is normalized to digits (`+` prefix preserved when present).
+- Imports are tenant-scoped by `X-Dealership-Id` and capped at 2,000 rows per request.
+
+### Troubleshooting
+
+- **Invalid header**: ensure a header row exists and includes `email` or `phone`.
+- **All rows failed**: verify header names (aliases above), and ensure each row has at least one contact value.
+- **Skipped duplicate**: duplicate detection uses existing lead `email` then `phone` within the selected dealership.

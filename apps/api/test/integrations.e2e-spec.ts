@@ -179,6 +179,16 @@ describe('Integrations (e2e)', () => {
       })
     },
     lead: {
+      findFirst: jest.fn(async ({ where }: any) => {
+        return (
+          state.leads.find((lead) => {
+            if (where.dealershipId && lead.dealershipId !== where.dealershipId) return false;
+            if (where.email?.equals && (lead.email ?? '').toLowerCase() !== String(where.email.equals).toLowerCase()) return false;
+            if (where.phone && lead.phone !== where.phone) return false;
+            return true;
+          }) ?? null
+        );
+      }),
       create: jest.fn(async ({ data }: any) => {
         const lead = {
           id: `lead-${state.leads.length + 1}`,
@@ -289,6 +299,7 @@ describe('Integrations (e2e)', () => {
 
   it('imports CSV and creates integration events + leads', async () => {
     const accessToken = await loginAs('admin@test.com');
+    const eventsBefore = state.events.length;
 
     const response = await request(app.getHttpServer())
       .post('/api/v1/integrations/import/csv')
@@ -307,11 +318,25 @@ describe('Integrations (e2e)', () => {
     expect(response.body.totalRows).toBe(2);
     expect(response.body.successCount).toBe(1);
     expect(response.body.failureCount).toBe(1);
-    expect(state.events).toHaveLength(2);
-    expect(state.events[0].parsedOk).toBe(true);
-    expect(state.events[0].leadId).toBeTruthy();
-    expect(state.events[1].parsedOk).toBe(false);
-    expect(state.events[1].error).toContain('email or phone');
+    expect(response.body.successes).toHaveLength(1);
+    expect(response.body.failures).toHaveLength(1);
+    expect(state.events.length).toBe(eventsBefore + 2);
+    expect(state.events[eventsBefore].parsedOk).toBe(true);
+    expect(state.events[eventsBefore].leadId).toBeTruthy();
+    expect(state.events[eventsBefore + 1].parsedOk).toBe(false);
+    expect(state.events[eventsBefore + 1].error).toContain('email|phone');
+  });
+
+
+  it('enforces dealership scoping on CSV import', async () => {
+    const accessToken = await loginAs('admin@test.com');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/integrations/import/csv')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('X-Dealership-Id', 'd-2')
+      .send({ csv: 'firstName,lastName,email\nOut,Scope,out@example.com' })
+      .expect(403);
   });
 
   it('accepts public webhook, stores event and links lead', async () => {
