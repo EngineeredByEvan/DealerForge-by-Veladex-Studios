@@ -12,6 +12,7 @@ export type AuthMeResponse = {
   email: string;
   firstName: string;
   lastName: string;
+  phone: string | null;
   isPlatformAdmin: boolean;
   isPlatformOperator: boolean;
   platformRole: PlatformRole;
@@ -851,10 +852,53 @@ export type Dealership = {
   slug: string;
   timezone: string;
   status: DealershipStatus;
+  businessHours?: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 };
 
+
+export async function updateCurrentUser(payload: {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+}): Promise<Pick<AuthMeResponse, 'id' | 'email' | 'firstName' | 'lastName' | 'phone'>> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/users/me`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${getAccessToken() ?? ''}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to update profile');
+  return (await response.json()) as Pick<AuthMeResponse, 'id' | 'email' | 'firstName' | 'lastName' | 'phone'>;
+}
+
+export async function fetchDealershipSettings(dealershipId: string): Promise<Dealership> {
+  const response = await apiRequest(`/dealerships/${dealershipId}`);
+  if (!response.ok) throw new Error('Unable to fetch dealership settings');
+  return (await response.json()) as Dealership;
+}
+
+export async function updateDealershipSettings(
+  dealershipId: string,
+  payload: Partial<{
+    name: string;
+    timezone: string;
+    status: DealershipStatus;
+    businessHours: Record<string, unknown>;
+  }>
+): Promise<Dealership> {
+  const response = await apiRequest(`/dealerships/${dealershipId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error('Unable to update dealership settings');
+  return (await response.json()) as Dealership;
+}
 export async function fetchDealershipsPlatform(): Promise<Dealership[]> {
   const response = await fetch(`${API_BASE_URL}/api/v1/platform/dealerships`, {
     headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` }

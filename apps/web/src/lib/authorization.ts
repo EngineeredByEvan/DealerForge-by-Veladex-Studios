@@ -10,6 +10,8 @@ const AUTHENTICATED_ROUTES = ['/dashboard'];
 const SALES_ROUTES = ['/leads', '/tasks', '/appointments'];
 const MANAGER_ROUTES = ['/reports'];
 const INTEGRATIONS_ROUTES = ['/settings/integrations', '/integrations'];
+const SETTINGS_PROFILE_ROUTES = ['/settings/profile'];
+const SETTINGS_DEALERSHIP_ROUTES = ['/settings/dealership'];
 
 function matchesRoute(pathname: string, routes: string[]): boolean {
   return routes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
@@ -52,6 +54,14 @@ export function canAccess(pathname: string, user: AuthorizedUser | null, dealers
   }
 
   if (matchesRoute(pathname, INTEGRATIONS_ROUTES)) {
+    return user.platformRole === 'OPERATOR' || user.platformRole === 'ADMIN' || dealershipRole === 'ADMIN';
+  }
+
+  if (matchesRoute(pathname, SETTINGS_PROFILE_ROUTES)) {
+    return true;
+  }
+
+  if (matchesRoute(pathname, SETTINGS_DEALERSHIP_ROUTES)) {
     return user.platformRole === 'OPERATOR' || user.platformRole === 'ADMIN' || dealershipRole === 'ADMIN';
   }
 

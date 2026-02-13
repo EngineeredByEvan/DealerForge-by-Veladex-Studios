@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { DealershipStatus, Prisma } from '@prisma/client';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { DealershipStatus, Prisma, Role } from '@prisma/client';
+import { AuthUser, TenantContext } from '../../common/types/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { CreateDealershipDto, UpdateDealershipDto } from './dealerships.dto';
+import { CreateDealershipDto, UpdateDealershipDto, UpdateDealershipSettingsDto } from './dealerships.dto';
 
 const DEALERSHIP_INCLUDE = {
   autoGroup: { select: { id: true, name: true } }
@@ -27,7 +28,8 @@ export class DealershipsService {
         name: payload.name,
         slug: payload.slug,
         timezone: payload.timezone,
-        status: payload.status ?? DealershipStatus.ACTIVE
+        status: payload.status ?? DealershipStatus.ACTIVE,
+        businessHours: payload.businessHours
       },
       include: DEALERSHIP_INCLUDE
     });
@@ -48,11 +50,67 @@ export class DealershipsService {
     });
   }
 
+  async getSettings(dealershipId: string, user: AuthUser, tenant?: TenantContext) {
+    this.assertSettingsAccess(dealershipId, user, tenant);
+
+    return this.prisma.dealership.findUniqueOrThrow({
+      where: { id: dealershipId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        timezone: true,
+        status: true,
+        businessHours: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+  }
+
+  async updateSettings(
+    dealershipId: string,
+    payload: UpdateDealershipSettingsDto,
+    user: AuthUser,
+    tenant?: TenantContext
+  ) {
+    this.assertSettingsAccess(dealershipId, user, tenant);
+
+    return this.prisma.dealership.update({
+      where: { id: dealershipId },
+      data: payload,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        timezone: true,
+        status: true,
+        businessHours: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+  }
+
   async deactivate(dealershipId: string) {
     return this.prisma.dealership.update({
       where: { id: dealershipId },
       data: { status: DealershipStatus.INACTIVE },
       include: DEALERSHIP_INCLUDE
     });
+  }
+
+  private assertSettingsAccess(dealershipId: string, user: AuthUser, tenant?: TenantContext): void {
+    if (user.platformRole === 'ADMIN' || user.platformRole === 'OPERATOR') {
+      return;
+    }
+
+    if (!tenant) {
+      throw new ForbiddenException('Tenant context is required for dealership settings access');
+    }
+
+    if (tenant.dealershipId !== dealershipId || tenant.role !== Role.ADMIN) {
+      throw new ForbiddenException('Only dealership admins can manage their own dealership settings');
+    }
   }
 }
